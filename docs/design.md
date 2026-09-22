@@ -4,21 +4,31 @@
 
 ### filemanager.py
 
-This modules contains  loadroom and loadassets functions.
+This modules contains ```loadroom``` and ```loadassets``` functions.
 
 #### loadroom
 
 Takes a YAML file as an input and expects the following blocks and keys:
+
+```yaml
 room:
-  width: ```width in metres```
-  length: ```length in metres```
-  height: ```height in metres```
+  width: width in metres
+  length: length in metres
+  height: height in metres
 
 power:
-  feed_a_voltage: 400
-  feed_a_capacity: 80000
-  feed_b_voltage: 400
-  feed_b_capacity: 80000
+  feed_a_voltage: Feed Voltage in volts
+  feed_a_capacity: Feed Voltage in volts
+  feed_b_voltage: Feed Voltage in volts
+  feed_b_capacity: Feed Voltage in volts
+```
+
+#### loadassets
+
+Takes a CSV file as an input with the asset database, one device per row.
+
+
+
 
 ## Files
 
