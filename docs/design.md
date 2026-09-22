@@ -1,5 +1,25 @@
 # Project Structure
 
+## Modules
+
+### filemanager.py
+
+This modules contains  loadroom and loadassets functions.
+
+#### loadroom
+
+Takes a YAML file as an input and expects the following blocks and keys:
+room:
+  width: ```width in metres```
+  length: ```length in metres```
+  height: ```height in metres```
+
+power:
+  feed_a_voltage: 400
+  feed_a_capacity: 80000
+  feed_b_voltage: 400
+  feed_b_capacity: 80000
+
 ## Files
 
 ```console
