@@ -16,9 +16,10 @@ import pandas as pd
 output_dir = "output"
 
 def main():
-    # select a room layout file
+# select a room layout file
     room_layout_data = loadroom()
-    
+
+    # just display the details for now
     room_width = room_layout_data["room"]["width"]
     room_length = room_layout_data["room"]["length"]
     room_height = room_layout_data["room"]["height"]
@@ -30,12 +31,11 @@ def main():
     print(f"Power feed A: {power_feed_a_voltage}V, {power_feed_a_capacity}A")
     print(f"Power feed B: {power_feed_b_voltage}V, {power_feed_b_capacity}A")
 
-    # load asset data
+# load asset data
     asset_data = loadassets()
     print(asset_data)
 
     # validate the file structure
-
     expected_columns = [
     "INDEX",
     "NAME",
@@ -54,7 +54,7 @@ def main():
     else:
         print("Schema validation FAILED")
 
-# rack and device summary
+    # rack and device summary
     rack_counts = df["RACK"].value_counts().to_dict()
     print(f"Rack counts: {rack_counts}")
 
@@ -64,7 +64,7 @@ def main():
     print("\nDevices per rack:")
     print(df['RACK'].value_counts().sort_index())
 
-    # this will display the room layout and asset data
+# this will display the room layout and asset data
     # but it's just a test from plotly.com
 
     dates = pd.date_range('2012-01-01', '2013-02-22')
