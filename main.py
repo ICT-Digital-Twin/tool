@@ -4,18 +4,21 @@ main.py
 PD
 2026
 """
-from modules.filemanager.filemanager import loadroom, loadassets
+from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
 from modules.display.display import brownian_motion 
 import plotly.graph_objects as go
 import plotly.io as pio
 pio.templates.default = "plotly_dark"
 import pandas as pd
-
+from pathlib import Path
 # for testing: from pprint import pprint
 
-output_dir = "output"
+output_dir = Path("data/output")
 
 def main():
+# check the output directory exists, if not create it
+    checkoutputdir(output_dir)
+
 # select a room layout file
     room_layout_data = loadroom()
 

@@ -10,18 +10,13 @@ from pathlib import Path
 from isort import file
 import pandas as pd
 
-# class filemanager:
-
-#     def load(self, filepath):
-
-#         file = Path(filepath)
-
-#         if file.suffix == ".yaml":
-#             return pd.read_xml(file)
-
-#         raise ValueError(
-#         f"Unsupported file type: {file.suffix}"
-#         )
+def checkoutputdir(output_dir):
+    output_path = Path(output_dir)
+    if not output_path.exists():
+        output_path.mkdir(parents=True)
+        print(f"Created output directory: {output_dir}")
+    else:
+        print(f"Output directory exists: {output_dir}")
 
 def loadroom():
 
