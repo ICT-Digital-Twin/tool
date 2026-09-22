@@ -1,8 +1,7 @@
 """
 ICT Digital Twin Tool
 main.py
-Peter Drinkwater
-L00196745
+PD
 2026
 """
 
