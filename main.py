@@ -31,12 +31,10 @@ def main():
     power_feed_b_voltage = room_layout_data["power"]["feed_b_voltage"]
     power_feed_b_capacity = room_layout_data["power"]["feed_b_capacity"]
     print(f"Room dimensions: {room_width}m x {room_length}m x {room_height}m")
-    print(f"Power feed A: {power_feed_a_voltage}V, {power_feed_a_capacity}A")
-    print(f"Power feed B: {power_feed_b_voltage}V, {power_feed_b_capacity}A")
+    print(f"Power feed A: {power_feed_a_voltage}V, {power_feed_a_capacity}A, B: {power_feed_b_voltage}V, {power_feed_b_capacity}A")
 
 # load asset data
     asset_data = loadassets()
-    print(asset_data)
 
     # validate the file structure
     expected_columns = [
@@ -64,8 +62,8 @@ def main():
     print(f"Unique devices: {df['NAME'].nunique()}")
     print(f"Unique racks: {df['RACK'].nunique()}")
 
-    print("\nDevices per rack:")
-    print(df['RACK'].value_counts().sort_index())
+    # print("\nDevices per rack:")
+    # print(df['RACK'].value_counts().sort_index())
 
 # this will display the room layout and asset data
     # but it's just a test from plotly.com

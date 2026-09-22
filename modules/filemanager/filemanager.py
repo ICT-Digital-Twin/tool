@@ -19,9 +19,8 @@ def checkoutputdir(output_dir):
         print(f"Output directory exists: {output_dir}")
 
 def loadroom():
-
+    print("Select YAML file for room layout")
     def load(self, filepath):
-
         file = Path(filepath)
 
         if file.suffix == ".yaml":
@@ -44,6 +43,7 @@ def loadroom():
     return room_layout_data
 
 def loadassets():
+    print("Select CSVL file for asset data")
     asset_data_file = filedialog.askopenfilename(
         title="Select Asset Data CSV",
         filetypes=[
