@@ -45,25 +45,23 @@ def main():
     "SIZE",
     "MODELNO"
     ]
+     
+    print(asset_data.columns.tolist())
     
-    df = asset_data
-    
-    print(df.columns.tolist())
-    
-    if list(df.columns) == expected_columns:
+    if list(asset_data.columns) == expected_columns:
         print("Schema validation PASSED")
     else:
         print("Schema validation FAILED")
 
     # rack and device summary
-    rack_counts = df["RACK"].value_counts().to_dict()
+    rack_counts = asset_data["RACK"].value_counts().to_dict()
     print(f"Rack counts: {rack_counts}")
 
-    print(f"Unique devices: {df['NAME'].nunique()}")
-    print(f"Unique racks: {df['RACK'].nunique()}")
+    print(f"Unique devices: {asset_data['NAME'].nunique()}")
+    print(f"Unique racks: {asset_data['RACK'].nunique()}")
 
     # print("\nDevices per rack:")
-    # print(df['RACK'].value_counts().sort_index())
+    # print(asset_data['RACK'].value_counts().sort_index())
 
 # this will display the room layout and asset data
     # but it's just a test from plotly.com
