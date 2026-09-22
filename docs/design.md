@@ -8,7 +8,7 @@ This modules contains ```loadroom``` and ```loadassets``` functions.
 
 #### loadroom
 
-Takes a YAML file as an input and expects the following blocks and keys:
+Takes a YAML file as an input and expects the following blocks, keys and values:
 
 ```yaml
 room:
@@ -29,7 +29,7 @@ Takes a CSV file as an input with the asset database, one device per row.
 
 ### Display
 
-Uses plotly to display data.
+Uses ```plotly``` to display data.
 
 
 ## Files
