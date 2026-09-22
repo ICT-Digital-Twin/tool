@@ -13,7 +13,7 @@ import pandas as pd
 
 # for testing: from pprint import pprint
 
-# bg_colour = "dimgray"
+output_dir = "output"
 
 def main():
     # select a room layout file
@@ -34,8 +34,38 @@ def main():
     asset_data = loadassets()
     print(asset_data)
 
-    # display the room layout and asset data
-    # test from plotly.com
+    # validate the file structure
+
+    expected_columns = [
+    "INDEX",
+    "NAME",
+    "RACK",
+    "RACK_UNIT",
+    "SIZE",
+    "MODELNO"
+    ]
+    
+    df = asset_data
+    
+    print(df.columns.tolist())
+    
+    if list(df.columns) == expected_columns:
+        print("Schema validation PASSED")
+    else:
+        print("Schema validation FAILED")
+
+# rack and device summary
+    rack_counts = df["RACK"].value_counts().to_dict()
+    print(f"Rack counts: {rack_counts}")
+
+    print(f"Unique devices: {df['NAME'].nunique()}")
+    print(f"Unique racks: {df['RACK'].nunique()}")
+
+    print("\nDevices per rack:")
+    print(df['RACK'].value_counts().sort_index())
+
+    # this will display the room layout and asset data
+    # but it's just a test from plotly.com
 
     dates = pd.date_range('2012-01-01', '2013-02-22')
     T = (dates.max()-dates.min()).days / 365
@@ -80,6 +110,8 @@ def main():
     )
 
     fig.show(config={"displayModeBar": False})
+    fig.write_html(f"{output_dir}/testoutput.html")
+    fig.write_image(f"{output_dir}/testoutput.png")
 
 if __name__ == "__main__":
     main()
