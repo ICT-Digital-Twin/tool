@@ -25,7 +25,8 @@ power:
 
 #### loadassets
 
-Takes a CSV file as an input with the asset database, one device per row.
+Takes a CSV file as an input with the asset database, one device per row, with the following headers:  
+```INDEX  NAME  RACK  RACK_UNIT  SIZE  MODELNO```
 
 ### Display
 
