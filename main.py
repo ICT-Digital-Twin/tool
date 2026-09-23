@@ -104,17 +104,16 @@ def main():
                 )
             ),
             aspectratio = dict( x=1, y=1, z=0.7 ),
-            aspectmode = 'manual'
+            aspectmode = 'manual',
+            dragmode = 'turntable'
         ),
     )
 
-    fig.update_layout(yaxis_title=None)
-    fig.update_layout(xaxis_title=None)
-    fig.update_yaxes(showticklabels=False, zeroline=False, showgrid=False)
-    fig.update_xaxes(showticklabels=False, zeroline=False, showgrid=False)
+#    fig.update_layout(scene={"dragmode": "turntable"})
+    fig.show(config={"displayModeBar": False})
+
     fig.write_html(f"{output_dir}/testoutput.html")
     fig.write_image(f"{output_dir}/testoutput.png")
-    fig.show(config={"displayModeBar": False})
-    
+
 if __name__ == "__main__":
     main()
