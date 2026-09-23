@@ -109,6 +109,8 @@ def main():
     )
 
     fig.show(config={"displayModeBar": False})
+    fig.update_layout(yaxis_title=None)
+    fig.update_layout(xaxis_title=None)
     fig.write_html(f"{output_dir}/testoutput.html")
     fig.write_image(f"{output_dir}/testoutput.png")
 
