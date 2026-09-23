@@ -8,18 +8,18 @@ from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
 from modules.display.display import brownian_motion 
 import plotly.graph_objects as go
 import plotly.io as pio
-pio.templates.default = "plotly_dark"
 import pandas as pd
 from pathlib import Path
 # for testing: from pprint import pprint
 
 output_dir = Path("data/output")
+pio.templates.default = "plotly_dark"
 
 def main():
-# check the output directory exists, if not create it
+# check if the output directory exists, if not create it
     checkoutputdir(output_dir)
 
-# select a room layout file
+# select a room layout file in YAML format
     room_layout_data = loadroom()
 
     # just display the details for now
@@ -40,6 +40,7 @@ def main():
     expected_columns = [
     "INDEX",
     "NAME",
+    "ROW",
     "RACK",
     "RACK_UNIT",
     "SIZE",
@@ -53,10 +54,9 @@ def main():
     else:
         print("Schema validation FAILED")
 
-    # rack and device summary
+    # print rack and device summary
     rack_counts = asset_data["RACK"].value_counts().to_dict()
     print(f"Rack counts: {rack_counts}")
-
     print(f"Unique devices: {asset_data['NAME'].nunique()}")
     print(f"Unique racks: {asset_data['RACK'].nunique()}")
 
@@ -108,11 +108,13 @@ def main():
         ),
     )
 
-    fig.show(config={"displayModeBar": False})
     fig.update_layout(yaxis_title=None)
     fig.update_layout(xaxis_title=None)
+    fig.update_yaxes(showticklabels=False, zeroline=False, showgrid=False)
+    fig.update_xaxes(showticklabels=False, zeroline=False, showgrid=False)
     fig.write_html(f"{output_dir}/testoutput.html")
     fig.write_image(f"{output_dir}/testoutput.png")
-
+    fig.show(config={"displayModeBar": False})
+    
 if __name__ == "__main__":
     main()
