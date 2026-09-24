@@ -1,2 +1,2 @@
-plotly>=6.0.0
+pyvista
 kaleido>=1.0.0
