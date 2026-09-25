@@ -5,21 +5,17 @@ PD
 2026
 """
 from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
-from modules.display.display import brownian_motion 
-import plotly.graph_objects as go
-import plotly.io as pio
 import pandas as pd
 from pathlib import Path
 # for testing: from pprint import pprint
 
 output_dir = Path("data/output")
-pio.templates.default = "plotly_dark"
 
 def main():
-# check if the output directory exists, if not create it
+    # check if the output directory exists, if not create it
     checkoutputdir(output_dir)
 
-# select a room layout file in YAML format
+    # select a room layout file in YAML format
     room_layout_data = loadroom()
 
     # just display the details for now
@@ -33,7 +29,7 @@ def main():
     print(f"Room dimensions: {room_width}m x {room_length}m x {room_height}m")
     print(f"Power feed A: {power_feed_a_voltage}V, {power_feed_a_capacity}A, B: {power_feed_b_voltage}V, {power_feed_b_capacity}A")
 
-# load asset data
+    # load asset data
     asset_data = loadassets()
 
     # validate the file structure
@@ -63,82 +59,8 @@ def main():
     # print("\nDevices per rack:")
     # print(asset_data['RACK'].value_counts().sort_index())
 
-# this will display the room layout and asset data
-    # but it's just a test from plotly.com
+    # this will display the room layout and asset data
 
-    # dates = pd.date_range('2012-01-01', '2013-02-22')
-    # T = (dates.max()-dates.min()).days / 365
-    # N = dates.size
-    # start_price = 100
-    # y = brownian_motion(T, N, sigma=0.1, S0=start_price)
-    # z = brownian_motion(T, N, sigma=0.1, S0=start_price)
-
-    # fig = go.Figure(data=go.Scatter3d(
-    #     x=dates, y=y, z=z,
-    #     marker=dict(
-    #         size=4,
-    #         color=z,
-    #         colorscale='Viridis',
-    #     ),
-    #     line=dict(
-    #         color='darkblue',
-    #         width=2
-    #     )
-    # ))
-
-    # fig.update_layout(
-    #     width=800,
-    #     height=700,
-    #     autosize=False,
-    #     scene=dict(
-    #         camera=dict(
-    #             up=dict(
-    #                 x=0,
-    #                 y=0,
-    #                 z=1
-    #             ),
-    #             eye=dict(
-    #                 x=0,
-    #                 y=1.0707,
-    #                 z=1,
-    #             )
-    #         ),
-    #         aspectratio = dict( x=1, y=1, z=0.7 ),
-    #         aspectmode = 'manual',
-    #         dragmode = 'turntable'
-    #     ),
-    # )
-
-    # fig.show(config={"displayModeBar": False})
-
-    # fig.write_html(f"{output_dir}/testoutput.html")
-    # fig.write_image(f"{output_dir}/testoutput.png")
-
-    fig = go.Figure()
-    
-    for rack in sorted(asset_data["RACK"].unique()):
-    
-        rack_df = asset_data[asset_data["RACK"] == rack]
-    
-        fig.add_trace(
-                go.Scatter(
-                x=rack_df["RACK_UNIT"],
-                y=[rack] * len(rack_df),
-                mode="markers",
-                marker=dict(
-                    size=rack_df["SIZE"] * 12
-                ),
-                name=rack
-            )
-        )
-    
-    fig.update_layout(
-        template="plotly_white",
-        height=700,
-        hovermode="closest"
-    )
-    fig.write_html(f"{output_dir}/testoutput.html")
-    fig.write_image(f"{output_dir}/testoutput.png")
 
     
 
