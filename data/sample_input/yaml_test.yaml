@@ -1,0 +1,11 @@
+room:
+  width: 20
+  length: 20
+  height: 2
+
+power:
+  feed_a_voltage: 400
+  feed_a_capacity: 80000
+  feed_b_voltage: 400
+  feed_b_capacity: 80000
+
