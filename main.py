@@ -5,6 +5,7 @@ PD
 2026
 """
 from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
+from modules.display.display import display_assets
 import pandas as pd
 from pathlib import Path
 # for testing: from pprint import pprint
@@ -60,9 +61,7 @@ def main():
     # print(asset_data['RACK'].value_counts().sort_index())
 
     # this will display the room layout and asset data
-
-
-    
+    display_assets(asset_data, room_layout_data)
 
 if __name__ == "__main__":
     main()

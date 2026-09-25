@@ -7,7 +7,7 @@ from tkinter import Tk, filedialog
 import yaml
 from fileinput import filename
 from pathlib import Path
-from isort import file
+#from isort import file
 import pandas as pd
 
 def checkoutputdir(output_dir):
