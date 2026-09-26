@@ -4,15 +4,13 @@ main.py
 PD
 2026
 """
+from config import OUTPUT_DIR
 from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
 from modules.display.display import display_assets
-from pathlib import Path
-
-output_dir = Path("data/output")
 
 
 def main():
-    checkoutputdir(output_dir)
+    checkoutputdir(OUTPUT_DIR)
 
     room_layout_data = loadroom()
     if not room_layout_data:
