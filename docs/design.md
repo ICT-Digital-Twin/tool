@@ -32,6 +32,13 @@ Takes a CSV file as an input with the asset database, one device per row, with t
 
 Uses ```pyvista``` to display data.
 
+Use left click to rotate the view.  Use mouse wheel/right click to zoom.
+
+Use shift-left click to pan.
+
+Mouseover any device to view asset data.
+
+
 #### Display logic
 
 The ROW field is used to distribute racks per row.  Rows are rendered in pairs...
