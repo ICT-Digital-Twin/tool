@@ -2,6 +2,22 @@
 
 ## Modules
 
+### config.py
+
+Contains default configuration values with dimensions in metres.
+
+```pyton
+RACK_WIDTH = 0.8
+RACK_DEPTH = 1.0
+RACK_UNIT_HEIGHT = 0.04445
+RACK_UNIT_COUNT = 42
+RACK_HEIGHT = RACK_UNIT_COUNT * RACK_UNIT_HEIGHT
+RACK_GAP = 0.003
+AISLE_WIDTH = 1.0
+DEVICE_WIDTH_RATIO = 0.9
+DEVICE_DEPTH_RATIO = 0.9
+```
+
 ### filemanager.py
 
 This modules contains ```loadroom``` and ```loadassets``` functions.
