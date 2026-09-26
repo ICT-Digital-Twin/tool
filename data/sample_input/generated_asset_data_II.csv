@@ -1,0 +1,35 @@
+INDEX,NAME,ROW,RACK,RACK_UNIT,SIZE,MODELNO
+1,Compute Node 01,A,A01,1,1,R670
+2,Compute Node 02,A,A01,2,1,R670
+3,Compute Node 03,A,A01,3,1,R670
+4,Compute Node 04,A,A01,4,1,R670
+5,Virtualisation Cluster 01,A,A02,1,2,R770
+6,Virtualisation Cluster 02,A,A02,3,2,R770
+7,Virtualisation Cluster 03,A,A02,5,2,R770
+8,Virtualisation Cluster 04,A,A03,1,2,R770
+9,Virtualisation Cluster 05,A,A03,3,2,R770
+10,Database Server 01,A,A03,5,2,R770
+11,Database Server 02,A,A04,1,2,R770
+12,Application Server 01,A,A04,3,2,R770
+13,Application Server 02,A,A04,5,2,R770
+14,AI Training Node 01,A,A05,1,6,XE9680
+15,AI Training Node 02,A,A05,7,6,XE9680
+16,Compute Node 05,B,B01,1,1,R670
+17,Compute Node 06,B,B01,2,1,R670
+18,Compute Node 07,B,B01,3,1,R670
+19,Compute Node 08,B,B01,4,1,R670
+20,Virtualisation Cluster 06,B,B02,1,2,R770
+21,Virtualisation Cluster 07,B,B02,3,2,R770
+22,Virtualisation Cluster 08,B,B02,5,2,R770
+23,Kubernetes Node 01,B,B03,1,2,R770
+24,Kubernetes Node 02,B,B03,3,2,R770
+25,Kubernetes Node 03,B,B03,5,2,R770
+26,Backup Server 01,B,B04,1,2,R770
+27,Monitoring Server 01,B,B04,3,2,R770
+28,Management Server 01,B,B04,5,2,R770
+29,SAN Controller A,B,B05,1,3,PowerStore Elite
+30,SAN Controller B,B,B05,4,3,PowerStore Elite
+31,Core Switch 01,B,B05,10,1,PowerSwitch Z-Series
+32,Core Switch 02,B,B05,11,1,PowerSwitch Z-Series
+33,SAN Switch A,B,B05,12,1,Brocade FC Switch
+34,SAN Switch B,B,B05,13,1,Brocade FC Switch

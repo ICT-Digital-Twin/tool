@@ -6,20 +6,19 @@ PD
 """
 from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
 from modules.display.display import display_assets
-import pandas as pd
 from pathlib import Path
-# for testing: from pprint import pprint
 
 output_dir = Path("data/output")
 
+
 def main():
-    # check if the output directory exists, if not create it
     checkoutputdir(output_dir)
 
-    # select a room layout file in YAML format
     room_layout_data = loadroom()
+    if not room_layout_data:
+        print("No room layout selected. Exiting.")
+        return
 
-    # just display the details for now
     room_width = room_layout_data["room"]["width"]
     room_length = room_layout_data["room"]["length"]
     room_height = room_layout_data["room"]["height"]
@@ -30,37 +29,33 @@ def main():
     print(f"Room dimensions: {room_width}m x {room_length}m x {room_height}m")
     print(f"Power feed A: {power_feed_a_voltage}V, {power_feed_a_capacity}A, B: {power_feed_b_voltage}V, {power_feed_b_capacity}A")
 
-    # load asset data
     asset_data = loadassets()
+    if asset_data is None:
+        print("No asset data selected. Exiting.")
+        return
 
-    # validate the file structure
     expected_columns = [
-    "INDEX",
-    "NAME",
-    "ROW",
-    "RACK",
-    "RACK_UNIT",
-    "SIZE",
-    "MODELNO"
+        "INDEX",
+        "NAME",
+        "ROW",
+        "RACK",
+        "RACK_UNIT",
+        "SIZE",
+        "MODELNO",
     ]
-     
+
     print(asset_data.columns.tolist())
-    
+
     if list(asset_data.columns) == expected_columns:
         print("Schema validation PASSED")
     else:
         print("Schema validation FAILED")
 
-    # print rack and device summary
     rack_counts = asset_data["RACK"].value_counts().to_dict()
     print(f"Rack counts: {rack_counts}")
     print(f"Unique devices: {asset_data['NAME'].nunique()}")
     print(f"Unique racks: {asset_data['RACK'].nunique()}")
 
-    # print("\nDevices per rack:")
-    # print(asset_data['RACK'].value_counts().sort_index())
-
-    # this will display the room layout and asset data
     display_assets(asset_data, room_layout_data)
 
 if __name__ == "__main__":
