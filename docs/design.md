@@ -26,30 +26,46 @@ power:
 #### loadassets
 
 Takes a CSV file as an input with the asset database, one device per row, with the following headers:  
-```INDEX  NAME  RACK  RACK_UNIT  SIZE  MODELNO```
+```INDEX  NAME  ROW  RACK  RACK_UNIT  SIZE  MODELNO```
 
 ### Display
 
-Uses ```plotly``` to display data.
+Uses ```pyvista``` to display data.
+
+#### Display logic
+
+The ROW field is used to distribute racks per row.  Rows are rendered in pairs...
+
+
 
 
 ## Files
 
 ```console
-c:\_Github Repositories\tool\.gitignore
-c:\_Github Repositories\tool\data
-c:\_Github Repositories\tool\docs
-c:\_Github Repositories\tool\LICENSE
-c:\_Github Repositories\tool\main.py
-c:\_Github Repositories\tool\modules
-c:\_Github Repositories\tool\README.md
-c:\_Github Repositories\tool\docs\design.md
-c:\_Github Repositories\tool\modules\display
-c:\_Github Repositories\tool\modules\filemanager
-c:\_Github Repositories\tool\modules\__init__.py
-c:\_Github Repositories\tool\modules\display\display.py
-c:\_Github Repositories\tool\modules\display\__init__.py
-c:\_Github Repositories\tool\modules\filemanager\filemanager.py
-c:\_Github Repositories\tool\modules\filemanager\__init__.py
-c:\_Github Repositories\tool\output
+C:\_Github Repositories\tool\.gitignore
+C:\_Github Repositories\tool\data
+C:\_Github Repositories\tool\docs
+C:\_Github Repositories\tool\LICENSE
+C:\_Github Repositories\tool\main.py
+C:\_Github Repositories\tool\modules
+C:\_Github Repositories\tool\README.md
+C:\_Github Repositories\tool\requirements.txt
+C:\_Github Repositories\tool\tests
+C:\_Github Repositories\tool\data\output
+C:\_Github Repositories\tool\data\sample_input
+C:\_Github Repositories\tool\data\output\testoutput.html
+C:\_Github Repositories\tool\data\output\testoutput.png
+C:\_Github Repositories\tool\data\sample_input\generated_asset_data.csv
+C:\_Github Repositories\tool\data\sample_input\generated_asset_data_II.csv
+C:\_Github Repositories\tool\data\sample_input\model_data.csv
+C:\_Github Repositories\tool\data\sample_input\yaml_test.yaml
+C:\_Github Repositories\tool\docs\design.md
+C:\_Github Repositories\tool\modules\display
+C:\_Github Repositories\tool\modules\filemanager
+C:\_Github Repositories\tool\modules\__init__.py
+C:\_Github Repositories\tool\modules\display\display.py
+C:\_Github Repositories\tool\modules\display\__init__.py
+C:\_Github Repositories\tool\modules\filemanager\filemanager.py
+C:\_Github Repositories\tool\modules\filemanager\__init__.py
+C:\_Github Repositories\tool\tests\test_project_validation.py
 ```
