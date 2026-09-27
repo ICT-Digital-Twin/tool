@@ -213,6 +213,15 @@ class ProjectValidationTests(unittest.TestCase):
         finally:
             plotter.close()
 
+    def test_gui_configuration_omits_removed_controls(self):
+        interface_source = Path("modules/interface/interface.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("Room opacity", interface_source)
+        self.assertNotIn("Function color hue step", interface_source)
+        self.assertNotIn("Function color saturation", interface_source)
+        self.assertNotIn("Function color brightness", interface_source)
+        self.assertNotIn('with dpg.collapsing_header(label="Display"', interface_source)
+
     def test_build_scene_has_no_rack_or_axis_labels(self):
         asset_data = pd.DataFrame(
             [

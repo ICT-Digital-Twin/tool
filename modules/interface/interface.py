@@ -196,13 +196,9 @@ def run_interface() -> None:
 					("Text", "TEXT_COLOR"),
 				):
 					add_color_option(label, setting, getattr(config, setting))
-				add_float_option("Room opacity", "ROOM_OPACITY", maximum=1.0)
 				add_float_option("Rack line width", "RACK_LINE_WIDTH", maximum=10.0)
 				for category, color in config.FUNCTION_COLORS.items():
 					add_color_option(category, ("FUNCTION_COLORS", category), color)
-				add_float_option("Function color hue step", "FUNCTION_COLOR_HUE_STEP", maximum=1.0)
-				add_float_option("Function color saturation", "FUNCTION_COLOR_SATURATION", maximum=1.0)
-				add_float_option("Function color brightness", "FUNCTION_COLOR_BRIGHTNESS", maximum=1.0)
 				dpg.add_checkbox(
 					label="Show device edges",
 					default_value=config.SHOW_DEVICE_EDGES,
@@ -210,59 +206,7 @@ def run_interface() -> None:
 					user_data="SHOW_DEVICE_EDGES",
 				)
 
-			with dpg.collapsing_header(label="Display", default_open=True):
-				theme_options = ["DarkTheme", "ParaViewTheme", "DocumentTheme"]
-				dpg.add_combo(
-					items=theme_options,
-					label="PyVista theme",
-					default_value=config.PYVISTA_THEME.__name__,
-					callback=update_theme,
-				)
-				for label, setting in (
-					("Room render style", "ROOM_RENDER_STYLE"),
-					("Rack render style", "RACK_RENDER_STYLE"),
-				):
-					dpg.add_combo(
-						items=["surface", "wireframe", "points"],
-						label=label,
-						default_value=getattr(config, setting),
-						callback=update_config_value,
-						user_data=setting,
-					)
-				dpg.add_checkbox(
-					label="Show grid axis labels",
-					default_value=config.GRID_SHOW_AXIS_LABELS,
-					callback=update_config_value,
-					user_data="GRID_SHOW_AXIS_LABELS",
-				)
-				dpg.add_input_text(
-					label="Grid axis title",
-					default_value=config.GRID_AXIS_TITLE,
-					callback=update_config_value,
-					user_data="GRID_AXIS_TITLE",
-				)
-				dpg.add_checkbox(
-					label="Terrain-style camera",
-					default_value=config.ENABLE_TERRAIN_STYLE,
-					callback=update_config_value,
-					user_data="ENABLE_TERRAIN_STYLE",
-				)
-				add_float_option("Hover font size", "HOVER_FONT_SIZE", maximum=48.0, step=1.0)
-				dpg.add_input_floatx(
-					label="Hover text position",
-					default_value=config.HOVER_TEXT_POSITION,
-					size=2,
-					callback=update_config_value,
-					user_data="HOVER_TEXT_POSITION",
-				)
-				dpg.add_input_floatx(
-					label="Camera up vector",
-					default_value=config.CAMERA_UP,
-					size=3,
-					callback=update_config_value,
-					user_data="CAMERA_UP",
-				)
-				dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
+			dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
 
 		with dpg.file_dialog(
 			directory_selector=False,
@@ -298,7 +242,7 @@ def run_interface() -> None:
 		):
 			dpg.add_file_extension(".csv")
 
-		dpg.create_viewport(title="ICT Digital Twin", width=580, height=440)
+		dpg.create_viewport(title="ICT Digital Twin", width=1024, height=768)
 		dpg.setup_dearpygui()
 		dpg.show_viewport()
 		dpg.set_primary_window("main_window", True)
