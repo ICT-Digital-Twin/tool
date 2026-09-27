@@ -18,6 +18,37 @@ DEVICE_WIDTH_RATIO = 0.9
 DEVICE_DEPTH_RATIO = 0.9
 ```
 
+and Pyvista and colour default settings
+
+```python
+BACKGROUND_COLOR = "#17202a"
+ROOM_COLOR = "#475569"
+ROOM_OPACITY = 0.25
+RACK_COLOR = "#8fa3b8"
+RACK_LINE_WIDTH = 2
+DEVICE_COLOR = "#3b38f8"
+FUNCTION_COLORS = {
+    "Compute": "#3a7fc9",
+    "Storage": "#9b6e32",
+    "Network": "#389a7e",
+    "Other": "#865cb0",
+}
+FUNCTION_COLOR_HUE_STEP = 0.4
+FUNCTION_COLOR_SATURATION = 0.72
+FUNCTION_COLOR_BRIGHTNESS = 0.95
+DEVICE_EDGE_COLOR = "#d8f3ff"
+SHOW_DEVICE_EDGES = True
+TEXT_COLOR = "#f8fafc"
+HOVER_FONT_SIZE = 10
+HOVER_TEXT_POSITION = (0.02, 0.98)
+ROOM_RENDER_STYLE = "wireframe"
+RACK_RENDER_STYLE = "wireframe"
+GRID_SHOW_AXIS_LABELS = False
+GRID_AXIS_TITLE = ""
+ENABLE_TERRAIN_STYLE = True
+CAMERA_UP = (0, 0, 1)
+```
+
 ### filemanager.py
 
 This modules contains ```loadroom``` and ```loadassets``` functions.
