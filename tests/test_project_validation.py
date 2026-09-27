@@ -14,20 +14,25 @@ class ProjectValidationTests(unittest.TestCase):
     def test_loadassets_sorts_by_row_rack_and_descending_rack_unit(self):
         asset_data = pd.DataFrame(
             [
-                {"ROW": 2, "RACK": "RACK-01", "RACK_UNIT": 1},
-                {"ROW": 1, "RACK": "RACK-02", "RACK_UNIT": 2},
-                {"ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 3},
-                {"ROW": 1, "RACK": "RACK-02", "RACK_UNIT": 10},
-                {"ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 40},
+                {"ROW": 2, "RACK": "RACK-01", "RACK_UNIT": 1, "MODELNO": "MODEL"},
+                {"ROW": 1, "RACK": "RACK-02", "RACK_UNIT": 2, "MODELNO": "MODEL"},
+                {"ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 3, "MODELNO": "MODEL"},
+                {"ROW": 1, "RACK": "RACK-02", "RACK_UNIT": 10, "MODELNO": "MODEL"},
+                {"ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 40, "MODELNO": "MODEL"},
             ]
         )
+        model_data = pd.DataFrame(columns=["MODELNO", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"])
 
         with patch(
             "modules.filemanager.filemanager.filedialog.askopenfilename",
-            return_value="assets.csv",
-        ), patch("modules.filemanager.filemanager.pd.read_csv", return_value=asset_data):
+            side_effect=["assets.csv", "model_details.csv"],
+        ), patch(
+            "modules.filemanager.filemanager.pd.read_csv",
+            side_effect=[asset_data, model_data],
+        ):
             sorted_data = loadassets()
 
+        assert sorted_data is not None
         self.assertEqual(
             list(sorted_data[["ROW", "RACK", "RACK_UNIT"]].itertuples(index=False, name=None)),
             [
@@ -38,6 +43,40 @@ class ProjectValidationTests(unittest.TestCase):
                 (2, "RACK-01", 1),
             ],
         )
+
+    def test_loadassets_joins_model_details_by_modelno(self):
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Asset 1", "ROW": 1, "RACK": "A01", "RACK_UNIT": 1, "MODELNO": "R670"},
+                {"NAME": "Asset 2", "ROW": 1, "RACK": "A01", "RACK_UNIT": 2, "MODELNO": "UNKNOWN"},
+            ]
+        )
+        model_data = pd.DataFrame(
+            [
+                {
+                    "MODELNO": "R670",
+                    "POWERLOAD": 450,
+                    "AIRFLOW": "Front",
+                    "DIRECTION": "Rear",
+                    "FUNCTION": "Compute",
+                }
+            ]
+        )
+
+        with patch(
+            "modules.filemanager.filemanager.filedialog.askopenfilename",
+            side_effect=["assets.csv", "model_details.csv"],
+        ), patch(
+            "modules.filemanager.filemanager.pd.read_csv",
+            side_effect=[asset_data, model_data],
+        ):
+            joined_data = loadassets()
+
+        assert joined_data is not None
+        self.assertEqual(joined_data.loc[0, "POWERLOAD"], 450)
+        self.assertEqual(joined_data.loc[0, "AIRFLOW"], "Front")
+        self.assertEqual(joined_data.loc[0, "DIRECTION"], "Rear")
+        self.assertTrue(pd.isna(joined_data.loc[1, "POWERLOAD"]))
 
     def test_checkoutputdir_creates_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,6 +116,34 @@ class ProjectValidationTests(unittest.TestCase):
 
         plotter = build_scene(asset_data)
         self.assertIsNotNone(plotter)
+
+    def test_build_scene_colors_devices_by_function(self):
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "ASSET-001", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 1, "SIZE": 1, "FUNCTION": "Compute"},
+                {"NAME": "ASSET-002", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 2, "SIZE": 1, "FUNCTION": "Storage"},
+                {"NAME": "ASSET-003", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 3, "SIZE": 1, "FUNCTION": "Compute"},
+            ]
+        )
+
+        from modules.display.display import build_scene
+
+        mesh_colors = []
+        add_mesh = pv.Plotter.add_mesh
+
+        def capture_add_mesh(plotter, mesh, *args, **kwargs):
+            mesh_colors.append(kwargs.get("color"))
+            return add_mesh(plotter, mesh, *args, **kwargs)
+
+        with patch.object(pv.Plotter, "add_mesh", new=capture_add_mesh):
+            plotter = build_scene(asset_data)
+
+        try:
+            device_colors = mesh_colors[1:]
+            self.assertEqual(device_colors[0], device_colors[2])
+            self.assertNotEqual(device_colors[0], device_colors[1])
+        finally:
+            plotter.close()
 
     def test_build_scene_places_rack_rows_with_one_meter_aisle(self):
         asset_data = pd.DataFrame(
@@ -158,8 +225,10 @@ class ProjectValidationTests(unittest.TestCase):
         with patch.object(pv.Plotter, "add_text") as mock_add_text, patch.object(pv.Plotter, "add_axes") as mock_add_axes:
             build_scene(asset_data)
 
-        mock_add_text.assert_called_once()
-        self.assertEqual(mock_add_text.call_args.kwargs["name"], "asset_hover")
+        self.assertEqual(mock_add_text.call_count, 2)
+        self.assertEqual(mock_add_text.call_args_list[0].kwargs["name"], "asset_hover")
+        self.assertEqual(mock_add_text.call_args_list[1].kwargs["name"], "rack_powerload")
+        self.assertEqual(mock_add_text.call_args_list[1].kwargs["position"], (0.02, 0.02))
         mock_add_axes.assert_not_called()
 
     def test_build_scene_shows_asset_details_on_mouseover(self):
@@ -172,6 +241,16 @@ class ProjectValidationTests(unittest.TestCase):
                     "RACK_UNIT": 1,
                     "SIZE": 1,
                     "MODELNO": "MODEL-X",
+                    "POWERLOAD": 450,
+                },
+                {
+                    "NAME": "ASSET-002",
+                    "ROW": 1,
+                    "RACK": "RACK-01",
+                    "RACK_UNIT": 2,
+                    "SIZE": 1,
+                    "MODELNO": "MODEL-Y",
+                    "POWERLOAD": 850,
                 }
             ]
         )
@@ -182,16 +261,20 @@ class ProjectValidationTests(unittest.TestCase):
         try:
             plotter.render()
             renderer = plotter.renderer
-            renderer.SetWorldPoint(0, 0, 0.022225, 1)
+            renderer.SetWorldPoint(0, 0, 0.01, 1)
             renderer.WorldToDisplay()
             x, y, _ = renderer.GetDisplayPoint()
             plotter.iren.interactor.SetEventPosition(int(x), int(y))
             plotter.iren.interactor.InvokeEvent("MouseMoveEvent")
 
             hover_label = plotter.actors["asset_hover"]
-            hover_text = hover_label.GetText(hover_label.UpperLeft)
-            self.assertIn("NAME: ASSET-001", hover_text)
-            self.assertIn("MODELNO: MODEL-X", hover_text)
+            hover_text = hover_label.GetInput()
+            rack_power_label = plotter.actors["rack_powerload"]
+            self.assertAlmostEqual(hover_label.position[0], 0.02)
+            self.assertAlmostEqual(hover_label.position[1], 0.98)
+            self.assertIn("NAME: ASSET-002", hover_text)
+            self.assertIn("MODELNO: MODEL-Y", hover_text)
+            self.assertEqual(rack_power_label.GetInput(), "Rack powerload: 1300 W")
         finally:
             plotter.close()
 

@@ -1,0 +1,55 @@
+INDEX,NAME,ROW,RACK,RACK_UNIT,SIZE,MODELNO
+1,Compute Node 01,A,A01,1,1,R670
+2,Compute Node 02,A,A01,2,1,R670
+3,Compute Node 03,A,A01,3,1,R670
+4,Compute Node 04,A,A01,4,1,R670
+5,TOR A01A,A,A01,41,1,C93180
+6,TOR A01B,A,A01,42,1,C93180
+7,Virtualisation Cluster 01,A,A02,1,2,R770
+8,Virtualisation Cluster 02,A,A02,3,2,R770
+9,Virtualisation Cluster 03,A,A02,5,2,R770
+10,TOR A02A,A,A02,41,1,C93180
+11,TOR A02B,A,A02,42,1,C93180
+12,Virtualisation Cluster 04,A,A03,1,2,R770
+13,Virtualisation Cluster 05,A,A03,3,2,R770
+14,Database Server 01,A,A03,5,2,R770
+15,TOR A03A,A,A03,41,1,C93180
+16,TOR A03B,A,A03,42,1,C93180
+17,Database Server 02,A,A04,1,2,R770
+18,Application Server 01,A,A04,3,2,R770
+19,Application Server 02,A,A04,5,2,R770
+20,TOR A04A,A,A04,41,1,C93180
+21,TOR A04B,A,A04,42,1,C93180
+22,AI Training Node 01,A,A05,1,6,XE9680
+23,AI Training Node 02,A,A05,7,6,XE9680
+24,TOR A05A,A,A05,41,1,C93180
+25,TOR A05B,A,A05,42,1,C93180
+26,Compute Node 05,B,B01,1,1,R670
+27,Compute Node 06,B,B01,2,1,R670
+28,Compute Node 07,B,B01,3,1,R670
+29,Compute Node 08,B,B01,4,1,R670
+30,TOR B01A,B,B01,41,1,C93180
+31,TOR B01B,B,B01,42,1,C93180
+32,Virtualisation Cluster 06,B,B02,1,2,R770
+33,Virtualisation Cluster 07,B,B02,3,2,R770
+34,Virtualisation Cluster 08,B,B02,5,2,R770
+35,TOR B02A,B,B02,41,1,C93180
+36,TOR B02B,B,B02,42,1,C93180
+37,Kubernetes Node 01,B,B03,1,2,R770
+38,Kubernetes Node 02,B,B03,3,2,R770
+39,Kubernetes Node 03,B,B03,5,2,R770
+40,TOR B03A,B,B03,41,1,C93180
+41,TOR B03B,B,B03,42,1,C93180
+42,Backup Server 01,B,B04,1,2,R770
+43,Monitoring Server 01,B,B04,3,2,R770
+44,Management Server 01,B,B04,5,2,R770
+45,TOR B04A,B,B04,41,1,C93180
+46,TOR B04B,B,B04,42,1,C93180
+47,SAN Controller A,B,B05,1,4,PowerStore Elite
+48,SAN Controller B,B,B05,5,4,PowerStore Elite
+49,Core Switch 01,B,B05,35,1,PowerSwitch Z-Series
+50,Core Switch 02,B,B05,36,1,PowerSwitch Z-Series
+51,SAN Switch A,B,B05,38,1,Brocade FC Switch
+52,SAN Switch B,B,B05,39,1,Brocade FC Switch
+53,TOR B05A,B,B05,41,1,C93180
+54,TOR B05B,B,B05,42,1,C93180

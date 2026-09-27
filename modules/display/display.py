@@ -5,6 +5,7 @@ This will display the loaded data.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from colorsys import hsv_to_rgb
 
 import pandas as pd
 import pyvista as pv
@@ -18,6 +19,9 @@ from config import (
 	DEVICE_EDGE_COLOR,
 	DEVICE_WIDTH_RATIO,
 	ENABLE_TERRAIN_STYLE,
+	FUNCTION_COLOR_BRIGHTNESS,
+	FUNCTION_COLOR_HUE_STEP,
+	FUNCTION_COLOR_SATURATION,
 	GRID_AXIS_TITLE,
 	GRID_SHOW_AXIS_LABELS,
 	HOVER_FONT_SIZE,
@@ -51,6 +55,31 @@ def _number(value: object, default: float = 1.0) -> float:
 	return number if number > 0 else default
 
 
+def _function_colors(asset_data: pd.DataFrame) -> dict[str, str]:
+	"""Return a distinct, stable color for each non-empty function."""
+	if "FUNCTION" not in asset_data:
+		return {}
+
+	functions = sorted(
+		{
+			str(value).strip()
+			for value in asset_data["FUNCTION"]
+			if not pd.isna(value) and str(value).strip()
+		}
+	)
+	return {
+		function: "#" + "".join(
+			f"{round(channel * 255):02x}"
+			for channel in hsv_to_rgb(
+				index * FUNCTION_COLOR_HUE_STEP % 1,
+				FUNCTION_COLOR_SATURATION,
+				FUNCTION_COLOR_BRIGHTNESS,
+			)
+		)
+		for index, function in enumerate(functions)
+	}
+
+
 def build_scene(
 	asset_data: pd.DataFrame,
 	room_layout_data: Mapping[str, object] | None = None,
@@ -69,6 +98,8 @@ def build_scene(
 	if interactor is None:
 		raise RuntimeError("The PyVista plotter has no render-window interactor")
 	device_details = {}
+	device_racks = {}
+	function_colors = _function_colors(asset_data)
 	room_width = room_length = room_height = 0
 	if room_layout_data:
 		room = room_layout_data.get("room", {})
@@ -117,6 +148,8 @@ def build_scene(
 		plotter.add_mesh(rack_mesh, style=RACK_RENDER_STYLE, color=RACK_COLOR, line_width=RACK_LINE_WIDTH)
 
 		rack_assets = asset_data[(asset_data["ROW"] == row) & (asset_data["RACK"] == rack)]
+		powerloads = rack_assets["POWERLOAD"] if "POWERLOAD" in rack_assets else pd.Series(0, index=rack_assets.index)
+		rack_powerload = pd.to_numeric(powerloads, errors="coerce").fillna(0).sum()
 		for asset in rack_assets.itertuples(index=False):
 			rack_unit = _number(getattr(asset, "RACK_UNIT"), 1.0)
 			unit_size = _number(getattr(asset, "SIZE"), 1.0)
@@ -134,7 +167,7 @@ def build_scene(
 			)
 			device_actor = plotter.add_mesh(
 				device,
-				color=DEVICE_COLOR,
+				color=function_colors.get(str(getattr(asset, "FUNCTION", "")).strip(), DEVICE_COLOR),
 				show_edges=SHOW_DEVICE_EDGES,
 				edge_color=DEVICE_EDGE_COLOR,
 			)
@@ -142,6 +175,7 @@ def build_scene(
 				f"{column}: {value}"
 				for column, value in zip(asset_data.columns, asset)
 			)
+			device_racks[device_actor] = (row, rack, rack_powerload)
 
 	hover_label = plotter.add_text(
 		"",
@@ -149,6 +183,17 @@ def build_scene(
 		font_size=HOVER_FONT_SIZE,
 		color=TEXT_COLOR,
 		name="asset_hover",
+		viewport=True,
+		render=False,
+	)
+	hover_label.GetTextProperty().SetVerticalJustificationToTop()
+	rack_power_label = plotter.add_text(
+		"",
+		position=(0.02, 0.02),
+		font_size=HOVER_FONT_SIZE,
+		color=TEXT_COLOR,
+		name="rack_powerload",
+		viewport=True,
 		render=False,
 	)
 	picker = vtk.vtkCellPicker()
@@ -156,16 +201,23 @@ def build_scene(
 	for device_actor in device_details:
 		picker.AddPickList(device_actor)
 	last_details = None
+	last_rack_powerload = None
 
 	def update_hover(_caller: object, _event: str) -> None:
-		nonlocal last_details
+		nonlocal last_details, last_rack_powerload
 		x, y = interactor.get_event_position()
 		picker.Pick(x, y, 0, plotter.renderer)
 		picked_actor = picker.GetActor()
 		details = device_details.get(picked_actor)
+		rack_info = device_racks.get(picked_actor)
 		if details != last_details:
-			hover_label.set_text("upper_left", details or "")
+			hover_label.SetInput(details or "")
 			last_details = details
+		rack_powerload = rack_info[2] if rack_info else None
+		if rack_powerload != last_rack_powerload:
+			text = f"Rack powerload: {rack_powerload:g} W" if rack_powerload is not None else ""
+			rack_power_label.SetInput(text)
+			last_rack_powerload = rack_powerload
 
 	interactor.add_observer("MouseMoveEvent", update_hover)
 

@@ -47,7 +47,36 @@ def loadassets():
         return None
 
     asset_data = pd.read_csv(asset_data_file)
+
+    print("Select CSV file for model details")
+    model_data_file = filedialog.askopenfilename(
+        title="Select Model Details CSV",
+        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+    )
+
+    if not model_data_file:
+        return None
+
+    model_data = pd.read_csv(model_data_file)
+    asset_data = asset_data.merge(model_data, on="MODELNO", how="left")
+
     return asset_data.sort_values(
         by=["ROW", "RACK", "RACK_UNIT"],
         ascending=[True, True, False],
     )
+    expected_columns = [
+            "INDEX",
+            "NAME",
+            "ROW",
+            "RACK",
+            "RACK_UNIT",
+            "SIZE",
+            "MODELNO",
+        ]
+    print(asset_data.columns.tolist())
+
+    if list(asset_data.columns) == expected_columns:
+        print("Schema validation PASSED")
+    else:
+        print("Schema validation FAILED")
+
