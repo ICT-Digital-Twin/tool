@@ -1,3 +1,34 @@
-# ICT Digital Twin tool repository
+# ICT Digital Twin tool 
+## Input file requirements
+### Room Layout (YAML)
 
-Code repository for student dissertation.
+Specifies room dimensions and power details
+
+```yaml
+room:
+  width: width in metres
+  length: length in metres
+  height: height in metres
+
+power:
+  feed_a_voltage: Feed Voltage in volts
+  feed_a_capacity: Feed Voltage in volts
+  feed_b_voltage: Feed Voltage in volts
+  feed_b_capacity: Feed Voltage in volts
+```
+
+### Asset Data
+
+A CSV file with the following columns: ```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO```
+
+This is the asset database arranged into ROWs and RACKs.
+
+
+### Asset details
+
+A CSV file with the following columns: ```MODELNO  SIZE  POWERLOAD  AIRFLOW  DIRECTION  FUNCTION```
+
+This is the model detail database to provide device charactestics.
+
+
+
