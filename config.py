@@ -24,10 +24,10 @@ RACK_COLOR = "#8fa3b8"
 RACK_LINE_WIDTH = 2
 DEVICE_COLOR = "#3b38f8"
 FUNCTION_COLORS = {
-    "Compute": "#4ea5ff",
-    "Storage": "#ffb454",
-    "Network": "#50d6b0",
-    "Other": "#c084fc",
+    "Compute": "#3a7fc9",
+    "Storage": "#9b6e32",
+    "Network": "#389a7e",
+    "Other": "#865cb0",
 }
 FUNCTION_COLOR_HUE_STEP = 0.4
 FUNCTION_COLOR_SATURATION = 0.72
