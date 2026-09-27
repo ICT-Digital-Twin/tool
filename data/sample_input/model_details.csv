@@ -1,8 +1,8 @@
-MODELNO,POWERLOAD,AIRFLOW DIRECTION,FUNCTION
-R670,450,Front-to-Rear,Compute
-R770,850,Front-to-Rear,Compute
-XE9680,7000,Front-to-Rear,Compute
-PowerStore Elite,1800,Front-to-Rear,Storage
-PowerSwitch Z-Series,750,Front-to-Rear,Storage
-Brocade FC Switch,350,Front-to-Rear,Storage
-C93180,350,Front-to-Rear,Network
+MODELNO,SIZE,POWERLOAD,AIRFLOW DIRECTION,FUNCTION
+R670,1,450,Front-to-Rear,Compute
+R770,2,850,Front-to-Rear,Compute
+XE9680,6,7000,Front-to-Rear,Compute
+PowerStore Elite,4,1800,Front-to-Rear,Storage
+PowerSwitch Z-Series,1,750,Front-to-Rear,Storage
+Brocade FC Switch,1,350,Front-to-Rear,Storage
+C93180,1,350,Front-to-Rear,Network

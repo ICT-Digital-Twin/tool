@@ -62,19 +62,17 @@ def loadassets():
     model_data = pd.read_csv(model_data_file)
     asset_data = asset_data.merge(model_data, on="MODELNO", how="left")
 
-    return asset_data.sort_values(
-        by=["ROW", "RACK", "RACK_UNIT"],
-        ascending=[True, True, False],
-    )
-
     expected_columns = [
             "INDEX",
             "NAME",
             "ROW",
             "RACK",
             "RACK_UNIT",
-            "SIZE",
             "MODELNO",
+            "SIZE",
+            "POWERLOAD",
+            "AIRFLOW DIRECTION",
+            "FUNCTION"
         ]
 
     print(asset_data.columns.tolist())
@@ -83,3 +81,8 @@ def loadassets():
         print("Schema validation PASSED")
     else:
         print("Schema validation FAILED")
+
+    return asset_data.sort_values(
+        by=["ROW", "RACK", "RACK_UNIT"],
+        ascending=[True, True, False],
+    )

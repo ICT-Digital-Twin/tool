@@ -19,6 +19,7 @@ from config import (
     DEVICE_EDGE_COLOR,
     DEVICE_WIDTH_RATIO,
     ENABLE_TERRAIN_STYLE,
+    FUNCTION_COLORS,
     FUNCTION_COLOR_BRIGHTNESS,
     FUNCTION_COLOR_HUE_STEP,
     FUNCTION_COLOR_SATURATION,
@@ -55,28 +56,23 @@ def _number(value: object, default: float = 1.0) -> float:
 
 
 def _function_colors(asset_data: pd.DataFrame) -> dict[str, str]:
-    """Return a distinct, stable color for each non-empty function."""
+    """Map function values to the configured function-category colors."""
     if "FUNCTION" not in asset_data:
         return {}
 
-    functions = sorted(
-        {
-            str(value).strip()
-            for value in asset_data["FUNCTION"]
-            if not pd.isna(value) and str(value).strip()
-        }
-    )
-    return {
-        function: "#" + "".join(
-            f"{round(channel * 255):02x}"
-            for channel in hsv_to_rgb(
-                index * FUNCTION_COLOR_HUE_STEP % 1,
-                FUNCTION_COLOR_SATURATION,
-                FUNCTION_COLOR_BRIGHTNESS,
-            )
-        )
-        for index, function in enumerate(functions)
+    category_names = {
+        "compute": "Compute",
+        "storage": "Storage",
+        "network": "Network",
     }
+    colors = {}
+    for value in asset_data["FUNCTION"]:
+        if pd.isna(value):
+            continue
+        function = str(value).strip()
+        category = category_names.get(function.casefold(), "Other")
+        colors[function] = FUNCTION_COLORS[category]
+    return colors
 
 
 def build_scene(
@@ -197,7 +193,8 @@ def build_scene(
             device_actor = plotter.add_mesh(
                 device,
                 color=function_colors.get(
-                    str(getattr(asset, "FUNCTION", "")).strip(), DEVICE_COLOR
+                    str(getattr(asset, "FUNCTION", "")).strip(),
+                    FUNCTION_COLORS["Other"],
                 ),
                 show_edges=SHOW_DEVICE_EDGES,
                 edge_color=DEVICE_EDGE_COLOR,
