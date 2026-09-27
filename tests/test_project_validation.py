@@ -85,24 +85,25 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertTrue(created_dir.exists())
             self.assertTrue(created_dir.is_dir())
 
-    def test_main_handles_cancelled_asset_selection(self):
-        room_layout = {
-            "room": {"width": 20, "length": 20, "height": 2},
-            "power": {
-                "feed_a_voltage": 400,
-                "feed_a_capacity": 80000,
-                "feed_b_voltage": 400,
-                "feed_b_capacity": 80000,
-            },
-        }
-
-        with patch("main.checkoutputdir"), patch("main.loadroom", return_value=room_layout), patch(
-            "main.loadassets",
-            return_value=None,
-        ), patch("main.display_assets") as mock_display:
+    def test_main_starts_interface_after_checking_output_directory(self):
+        with patch("main.checkoutputdir") as mock_check, patch("main.run_interface") as mock_interface:
             main()
 
-        mock_display.assert_not_called()
+        mock_check.assert_called_once()
+        mock_interface.assert_called_once_with()
+
+    def test_function_colors_use_live_configuration(self):
+        from modules.display.display import _function_colors
+
+        asset_data = pd.DataFrame({"FUNCTION": ["Compute", "Unclassified"]})
+        with patch("config.FUNCTION_COLORS", {"Compute": "#010203", "Other": "#040506"}), patch(
+            "config.FUNCTION_COLOR_SATURATION",
+            0.1,
+        ):
+            colors = _function_colors(asset_data)
+
+        self.assertEqual(colors["Compute"], "#010203")
+        self.assertNotEqual(colors["Unclassified"], "#040506")
 
     def test_build_scene_accepts_valid_asset_dataframe(self):
         asset_data = pd.DataFrame(

@@ -1,0 +1,307 @@
+"""Dear PyGui interface for loading data and opening the 3D view."""
+from pathlib import Path
+
+import dearpygui.dearpygui as dpg
+import pyvista as pv
+
+import config
+from modules.display import display_assets
+from modules.filemanager import loadassets, loadroom
+
+
+def run_interface() -> None:
+	"""Create and run the application interface."""
+	state = {
+		"room_layout": None,
+		"asset_path": None,
+		"model_path": None,
+		"asset_data": None,
+	}
+	default_path = str(Path.cwd())
+
+	def set_status(message: str) -> None:
+		dpg.set_value("status_label", message)
+
+	def update_view_button() -> None:
+		ready = state["room_layout"] is not None and state["asset_data"] is not None
+		dpg.configure_item("view_button", enabled=ready)
+
+	def load_room_callback(_sender: int, app_data: dict, _user_data: object = None) -> None:
+		file_path = app_data.get("file_path_name")
+		if not file_path:
+			return
+		try:
+			room_layout = loadroom(file_path)
+			if room_layout is None:
+				raise ValueError("The selected YAML file is empty.")
+		except Exception as error:
+			set_status(f"Could not load room layout: {error}")
+			return
+		state["room_layout"] = room_layout
+		dpg.set_value("room_file_label", Path(file_path).name)
+		set_status("Room layout loaded.")
+		update_view_button()
+
+	def load_asset_callback(_sender: int, app_data: dict, _user_data: object = None) -> None:
+		file_path = app_data.get("file_path_name")
+		if not file_path:
+			return
+		state["asset_path"] = file_path
+		state["model_path"] = None
+		state["asset_data"] = None
+		dpg.set_value("asset_file_label", Path(file_path).name)
+		dpg.set_value("model_file_label", "Not selected")
+		dpg.configure_item("model_button", enabled=True)
+		set_status("Asset CSV selected. Select the model-details CSV to continue.")
+		update_view_button()
+
+	def load_model_callback(_sender: int, app_data: dict, _user_data: object = None) -> None:
+		file_path = app_data.get("file_path_name")
+		if not file_path:
+			return
+		if state["asset_path"] is None:
+			set_status("Select the asset CSV first.")
+			return
+		state["model_path"] = file_path
+		try:
+			asset_data = loadassets(state["asset_path"], file_path)
+		except Exception as error:
+			state["asset_data"] = None
+			set_status(f"Could not load asset data: {error}")
+			update_view_button()
+			return
+		if asset_data is None:
+			set_status("Asset data was not loaded.")
+			return
+		state["asset_data"] = asset_data
+		dpg.set_value("model_file_label", Path(file_path).name)
+		set_status(f"Loaded {len(asset_data)} assets.")
+		update_view_button()
+
+	def update_config_value(_sender: int, value: object, setting: str) -> None:
+		if setting == "OUTPUT_DIR":
+			if isinstance(value, str):
+				config.OUTPUT_DIR = Path(value)
+		elif setting in ("CAMERA_UP", "HOVER_TEXT_POSITION"):
+			if isinstance(value, (tuple, list)):
+				setattr(config, setting, tuple(float(component) for component in value))
+		else:
+			setattr(config, setting, value)
+		if setting in ("RACK_UNIT_COUNT", "RACK_UNIT_HEIGHT"):
+			config.RACK_HEIGHT = config.RACK_UNIT_COUNT * config.RACK_UNIT_HEIGHT
+			dpg.set_value("rack_height_value", f"{config.RACK_HEIGHT:.3f} m")
+
+	def update_theme(_sender: int, value: str, _user_data: object = None) -> None:
+		config.PYVISTA_THEME = getattr(pv.themes, value)
+
+	def update_color(_sender: int, value: list[int], setting: str | tuple[str, str]) -> None:
+		color = "#" + "".join(f"{round(channel):02x}" for channel in value[:3])
+		if isinstance(setting, tuple):
+			config.FUNCTION_COLORS[setting[1]] = color
+		else:
+			setattr(config, setting, color)
+
+	def color_value(color: str) -> tuple[int, int, int, int]:
+		return tuple(int(color[index:index + 2], 16) for index in (1, 3, 5)) + (255,)
+
+	def add_float_option(
+		label: str,
+		setting: str,
+		minimum: float = 0.0,
+		maximum: float = 100.0,
+		step: float = 0.01,
+	) -> None:
+		dpg.add_input_float(
+			label=label,
+			default_value=getattr(config, setting),
+			min_value=minimum,
+			max_value=maximum,
+			min_clamped=True,
+			max_clamped=True,
+			step=step,
+			callback=update_config_value,
+			user_data=setting,
+		)
+
+	def add_color_option(label: str, setting: str | tuple[str, str], color: str) -> None:
+		dpg.add_color_edit(
+			label=label,
+			default_value=color_value(color),
+			no_alpha=True,
+			callback=update_color,
+			user_data=setting,
+		)
+
+	def open_view(_sender: int, _app_data: object, _user_data: object = None) -> None:
+		try:
+			display_assets(state["asset_data"], state["room_layout"])
+		except Exception as error:
+			set_status(f"Could not open 3D view: {error}")
+
+	try:
+		dpg.create_context()
+		with dpg.window(label="ICT Digital Twin", tag="main_window", width=540, height=390):
+			dpg.add_text("Load the room layout and both data files")
+			dpg.add_separator()
+			dpg.add_button(label="Load room layout YAML", callback=lambda: dpg.show_item("room_dialog"), width=220)
+			dpg.add_text("Not selected", tag="room_file_label")
+			dpg.add_spacer(height=6)
+			dpg.add_button(label="Load asset data CSV", callback=lambda: dpg.show_item("asset_dialog"), width=220)
+			dpg.add_text("Not selected", tag="asset_file_label")
+			dpg.add_spacer(height=6)
+			dpg.add_button(label="Load model details CSV", tag="model_button", enabled=False, callback=lambda: dpg.show_item("model_dialog"), width=220)
+			dpg.add_text("Not selected", tag="model_file_label")
+			dpg.add_separator()
+			dpg.add_button(label="Open 3D view", tag="view_button", enabled=False, callback=open_view, width=220)
+			dpg.add_button(label="Configuration", callback=lambda: dpg.show_item("config_window"), width=220)
+			dpg.add_text("Select all three files to enable the 3D view.", tag="status_label", wrap=490)
+
+		with dpg.window(label="Configuration", tag="config_window", width=620, height=720, show=False, modal=True):
+			with dpg.collapsing_header(label="Files and layout", default_open=True):
+				dpg.add_input_text(
+					label="Output directory",
+					default_value=str(config.OUTPUT_DIR),
+					callback=update_config_value,
+					user_data="OUTPUT_DIR",
+				)
+				for label, setting in (
+					("Rack width (m)", "RACK_WIDTH"),
+					("Rack depth (m)", "RACK_DEPTH"),
+					("Rack-unit height (m)", "RACK_UNIT_HEIGHT"),
+					("Rack gap (m)", "RACK_GAP"),
+					("Aisle width (m)", "AISLE_WIDTH"),
+					("Device width ratio", "DEVICE_WIDTH_RATIO"),
+					("Device depth ratio", "DEVICE_DEPTH_RATIO"),
+				):
+					add_float_option(label, setting, maximum=10.0)
+				dpg.add_input_int(
+					label="Rack-unit count",
+					default_value=config.RACK_UNIT_COUNT,
+					min_value=1,
+					max_value=100,
+					min_clamped=True,
+					max_clamped=True,
+					callback=update_config_value,
+					user_data="RACK_UNIT_COUNT",
+				)
+				dpg.add_text(f"Rack height: {config.RACK_HEIGHT:.3f} m", tag="rack_height_value")
+
+			with dpg.collapsing_header(label="Colors", default_open=True):
+				for label, setting in (
+					("Background", "BACKGROUND_COLOR"),
+					("Room", "ROOM_COLOR"),
+					("Rack", "RACK_COLOR"),
+					("Device", "DEVICE_COLOR"),
+					("Device edges", "DEVICE_EDGE_COLOR"),
+					("Text", "TEXT_COLOR"),
+				):
+					add_color_option(label, setting, getattr(config, setting))
+				add_float_option("Room opacity", "ROOM_OPACITY", maximum=1.0)
+				add_float_option("Rack line width", "RACK_LINE_WIDTH", maximum=10.0)
+				for category, color in config.FUNCTION_COLORS.items():
+					add_color_option(category, ("FUNCTION_COLORS", category), color)
+				add_float_option("Function color hue step", "FUNCTION_COLOR_HUE_STEP", maximum=1.0)
+				add_float_option("Function color saturation", "FUNCTION_COLOR_SATURATION", maximum=1.0)
+				add_float_option("Function color brightness", "FUNCTION_COLOR_BRIGHTNESS", maximum=1.0)
+				dpg.add_checkbox(
+					label="Show device edges",
+					default_value=config.SHOW_DEVICE_EDGES,
+					callback=update_config_value,
+					user_data="SHOW_DEVICE_EDGES",
+				)
+
+			with dpg.collapsing_header(label="Display", default_open=True):
+				theme_options = ["DarkTheme", "ParaViewTheme", "DocumentTheme"]
+				dpg.add_combo(
+					items=theme_options,
+					label="PyVista theme",
+					default_value=config.PYVISTA_THEME.__name__,
+					callback=update_theme,
+				)
+				for label, setting in (
+					("Room render style", "ROOM_RENDER_STYLE"),
+					("Rack render style", "RACK_RENDER_STYLE"),
+				):
+					dpg.add_combo(
+						items=["surface", "wireframe", "points"],
+						label=label,
+						default_value=getattr(config, setting),
+						callback=update_config_value,
+						user_data=setting,
+					)
+				dpg.add_checkbox(
+					label="Show grid axis labels",
+					default_value=config.GRID_SHOW_AXIS_LABELS,
+					callback=update_config_value,
+					user_data="GRID_SHOW_AXIS_LABELS",
+				)
+				dpg.add_input_text(
+					label="Grid axis title",
+					default_value=config.GRID_AXIS_TITLE,
+					callback=update_config_value,
+					user_data="GRID_AXIS_TITLE",
+				)
+				dpg.add_checkbox(
+					label="Terrain-style camera",
+					default_value=config.ENABLE_TERRAIN_STYLE,
+					callback=update_config_value,
+					user_data="ENABLE_TERRAIN_STYLE",
+				)
+				add_float_option("Hover font size", "HOVER_FONT_SIZE", maximum=48.0, step=1.0)
+				dpg.add_input_floatx(
+					label="Hover text position",
+					default_value=config.HOVER_TEXT_POSITION,
+					size=2,
+					callback=update_config_value,
+					user_data="HOVER_TEXT_POSITION",
+				)
+				dpg.add_input_floatx(
+					label="Camera up vector",
+					default_value=config.CAMERA_UP,
+					size=3,
+					callback=update_config_value,
+					user_data="CAMERA_UP",
+				)
+				dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
+
+		with dpg.file_dialog(
+			directory_selector=False,
+			show=False,
+			callback=load_room_callback,
+			tag="room_dialog",
+			width=700,
+			height=400,
+			default_path=default_path,
+		):
+			dpg.add_file_extension(".yaml")
+			dpg.add_file_extension(".yml")
+
+		with dpg.file_dialog(
+			directory_selector=False,
+			show=False,
+			callback=load_asset_callback,
+			tag="asset_dialog",
+			width=700,
+			height=400,
+			default_path=default_path,
+		):
+			dpg.add_file_extension(".csv")
+
+		with dpg.file_dialog(
+			directory_selector=False,
+			show=False,
+			callback=load_model_callback,
+			tag="model_dialog",
+			width=700,
+			height=400,
+			default_path=default_path,
+		):
+			dpg.add_file_extension(".csv")
+
+		dpg.create_viewport(title="ICT Digital Twin", width=580, height=440)
+		dpg.setup_dearpygui()
+		dpg.show_viewport()
+		dpg.set_primary_window("main_window", True)
+		dpg.start_dearpygui()
+	finally:
+		dpg.destroy_context()

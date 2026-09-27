@@ -18,13 +18,15 @@ def checkoutputdir(output_dir):
     return output_path
 
 
-def loadroom():
+def loadroom(file_path=None):
     """Function to load a yaml file for room layout."""
-    print("Select YAML file for room layout")
-    room_layout_file = filedialog.askopenfilename(
-        title="Select a file",
-        filetypes=[("YAML files", "*.yaml"), ("YAML files", "*.yml")],
-    )
+    room_layout_file = file_path
+    if room_layout_file is None:
+        print("Select YAML file for room layout")
+        room_layout_file = filedialog.askopenfilename(
+            title="Select a file",
+            filetypes=[("YAML files", "*.yaml"), ("YAML files", "*.yml")],
+        )
 
     if not room_layout_file:
         return None
@@ -35,24 +37,26 @@ def loadroom():
     return room_layout_data
 
 
-def loadassets():
+def loadassets(asset_data_file=None, model_data_file=None):
     """Function to load asset data from CSV files."""
-    print("Select CSV file for asset data")
-    asset_data_file = filedialog.askopenfilename(
-        title="Select Asset Data CSV",
-        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-    )
+    if asset_data_file is None:
+        print("Select CSV file for asset data")
+        asset_data_file = filedialog.askopenfilename(
+            title="Select Asset Data CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
 
     if not asset_data_file:
         return None
 
     asset_data = pd.read_csv(asset_data_file)
 
-    print("Select CSV file for model details")
-    model_data_file = filedialog.askopenfilename(
-        title="Select Model Details CSV",
-        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-    )
+    if model_data_file is None:
+        print("Select CSV file for model details")
+        model_data_file = filedialog.askopenfilename(
+            title="Select Model Details CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
 
     if not model_data_file:
         return None

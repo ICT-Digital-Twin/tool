@@ -10,37 +10,7 @@ import pandas as pd
 import pyvista as pv
 import vtk
 
-from config import (
-    AISLE_WIDTH,
-    CAMERA_UP,
-    DEVICE_COLOR,
-    DEVICE_DEPTH_RATIO,
-    DEVICE_EDGE_COLOR,
-    DEVICE_WIDTH_RATIO,
-    ENABLE_TERRAIN_STYLE,
-    FUNCTION_COLORS,
-    FUNCTION_COLOR_BRIGHTNESS,
-    FUNCTION_COLOR_HUE_STEP,
-    FUNCTION_COLOR_SATURATION,
-    GRID_AXIS_TITLE,
-    GRID_SHOW_AXIS_LABELS,
-    HOVER_FONT_SIZE,
-    HOVER_TEXT_POSITION,
-    RACK_COLOR,
-    RACK_DEPTH,
-    RACK_GAP,
-    RACK_HEIGHT,
-    RACK_LINE_WIDTH,
-    RACK_RENDER_STYLE,
-    RACK_WIDTH,
-    ROOM_COLOR,
-    ROOM_OPACITY,
-    ROOM_RENDER_STYLE,
-    RACK_UNIT_HEIGHT,
-    SHOW_DEVICE_EDGES,
-    TEXT_COLOR,
-    create_pyvista_theme,
-)
+import config
 
 REQUIRED_COLUMNS = {"NAME", "ROW", "RACK", "RACK_UNIT", "SIZE"}
 
@@ -63,14 +33,26 @@ def _function_colors(asset_data: pd.DataFrame) -> dict[str, str]:
         "compute": "Compute",
         "storage": "Storage",
         "network": "Network",
+        "other": "Other",
     }
     colors = {}
+    unknown_functions = {}
     for value in asset_data["FUNCTION"]:
         if pd.isna(value):
             continue
         function = str(value).strip()
-        category = category_names.get(function.casefold(), "Other")
-        colors[function] = FUNCTION_COLORS[category]
+        category = category_names.get(function.casefold())
+        if category is not None:
+            colors[function] = config.FUNCTION_COLORS[category]
+            continue
+        color_index = unknown_functions.setdefault(function, len(unknown_functions))
+        hue = (color_index * config.FUNCTION_COLOR_HUE_STEP) % 1.0
+        rgb = hsv_to_rgb(
+            hue,
+            config.FUNCTION_COLOR_SATURATION,
+            config.FUNCTION_COLOR_BRIGHTNESS,
+        )
+        colors[function] = "#" + "".join(f"{round(channel * 255):02x}" for channel in rgb)
     return colors
 
 
@@ -87,7 +69,7 @@ def build_scene(
         missing = ", ".join(sorted(missing_columns))
         raise ValueError(f"asset_data is missing required columns: {missing}")
 
-    plotter = pv.Plotter(theme=create_pyvista_theme())
+    plotter = pv.Plotter(theme=config.create_pyvista_theme())
     interactor = plotter.iren
     if interactor is None:
         raise RuntimeError("The PyVista plotter has no render-window interactor")
@@ -107,7 +89,7 @@ def build_scene(
     racks = list(
         asset_data[["ROW", "RACK"]].drop_duplicates().itertuples(index=False, name=None)
     )
-    rack_spacing = RACK_WIDTH + RACK_GAP
+    rack_spacing = config.RACK_WIDTH + config.RACK_GAP
     row_values = list(asset_data["ROW"].drop_duplicates())
     row_racks = {
         row: list(asset_data.loc[asset_data["ROW"] == row, "RACK"].drop_duplicates())
@@ -122,13 +104,13 @@ def build_scene(
         else 0
     )
     row_y_offset = (
-        room_length / 2 - (len(row_values) - 1) * (RACK_DEPTH + AISLE_WIDTH) / 2
+        room_length / 2 - (len(row_values) - 1) * (config.RACK_DEPTH + config.AISLE_WIDTH) / 2
         if has_room_dimensions
         else 0
     )
-    # Adjacent rack rows leave a one-meter aisle between their one-meter-deep racks.
+    # Adjacent rack rows leave the configured aisle between their racks.
     row_positions = {
-        row: row_index * (RACK_DEPTH + AISLE_WIDTH) + row_y_offset
+        row: row_index * (config.RACK_DEPTH + config.AISLE_WIDTH) + row_y_offset
         for row_index, row in enumerate(row_values)
     }
     rack_positions = {}
@@ -143,28 +125,28 @@ def build_scene(
         room_mesh = pv.Box(bounds=(0, room_width, 0, room_length, 0, room_height))
         plotter.add_mesh(
             room_mesh,
-            style=ROOM_RENDER_STYLE,
-            color=ROOM_COLOR,
-            opacity=ROOM_OPACITY,
+            style=config.ROOM_RENDER_STYLE,
+            color=config.ROOM_COLOR,
+            opacity=config.ROOM_OPACITY,
         )
 
     for row, rack in racks:
         x, y = rack_positions[(row, rack)]
         rack_mesh = pv.Box(
             bounds=(
-                x - RACK_WIDTH / 2,
-                x + RACK_WIDTH / 2,
-                y - RACK_DEPTH / 2,
-                y + RACK_DEPTH / 2,
+                x - config.RACK_WIDTH / 2,
+                x + config.RACK_WIDTH / 2,
+                y - config.RACK_DEPTH / 2,
+                y + config.RACK_DEPTH / 2,
                 0,
-                RACK_HEIGHT,
+                config.RACK_HEIGHT,
             )
         )
         plotter.add_mesh(
             rack_mesh,
-            style=RACK_RENDER_STYLE,
-            color=RACK_COLOR,
-            line_width=RACK_LINE_WIDTH,
+            style=config.RACK_RENDER_STYLE,
+            color=config.RACK_COLOR,
+            line_width=config.RACK_LINE_WIDTH,
         )
 
         rack_assets = asset_data[(asset_data["ROW"] == row) & (asset_data["RACK"] == rack)]
@@ -177,14 +159,14 @@ def build_scene(
         for asset in rack_assets.itertuples(index=False):
             rack_unit = _number(getattr(asset, "RACK_UNIT"), 1.0)
             unit_size = _number(getattr(asset, "SIZE"), 1.0)
-            height = unit_size * RACK_UNIT_HEIGHT
-            center_z = (rack_unit - 1) * RACK_UNIT_HEIGHT + height / 2
+            height = unit_size * config.RACK_UNIT_HEIGHT
+            center_z = (rack_unit - 1) * config.RACK_UNIT_HEIGHT + height / 2
             device = pv.Box(
                 bounds=(
-                    x - RACK_WIDTH * DEVICE_WIDTH_RATIO / 2,
-                    x + RACK_WIDTH * DEVICE_WIDTH_RATIO / 2,
-                    y - RACK_DEPTH * DEVICE_DEPTH_RATIO / 2,
-                    y + RACK_DEPTH * DEVICE_DEPTH_RATIO / 2,
+                    x - config.RACK_WIDTH * config.DEVICE_WIDTH_RATIO / 2,
+                    x + config.RACK_WIDTH * config.DEVICE_WIDTH_RATIO / 2,
+                    y - config.RACK_DEPTH * config.DEVICE_DEPTH_RATIO / 2,
+                    y + config.RACK_DEPTH * config.DEVICE_DEPTH_RATIO / 2,
                     center_z - height / 2,
                     center_z + height / 2,
                 )
@@ -193,10 +175,10 @@ def build_scene(
                 device,
                 color=function_colors.get(
                     str(getattr(asset, "FUNCTION", "")).strip(),
-                    FUNCTION_COLORS["Other"],
+                    config.DEVICE_COLOR,
                 ),
-                show_edges=SHOW_DEVICE_EDGES,
-                edge_color=DEVICE_EDGE_COLOR,
+                show_edges=config.SHOW_DEVICE_EDGES,
+                edge_color=config.DEVICE_EDGE_COLOR,
             )
             device_details[device_actor] = "\n".join(
                 f"{column}: {value}"
@@ -206,9 +188,9 @@ def build_scene(
 
     hover_label = plotter.add_text(
         "",
-        position=HOVER_TEXT_POSITION,
-        font_size=HOVER_FONT_SIZE,
-        color=TEXT_COLOR,
+        position=config.HOVER_TEXT_POSITION,
+        font_size=config.HOVER_FONT_SIZE,
+        color=config.TEXT_COLOR,
         name="asset_hover",
         viewport=True,
         render=False,
@@ -217,8 +199,8 @@ def build_scene(
     rack_power_label = plotter.add_text(
         "",
         position=(0.02, 0.02),
-        font_size=HOVER_FONT_SIZE,
-        color=TEXT_COLOR,
+        font_size=config.HOVER_FONT_SIZE,
+        color=config.TEXT_COLOR,
         name="rack_powerload",
         viewport=True,
         render=False,
@@ -256,16 +238,16 @@ def build_scene(
     interactor.add_observer("MouseMoveEvent", update_hover)
 
     plotter.show_grid(
-        show_xlabels=GRID_SHOW_AXIS_LABELS,
-        show_ylabels=GRID_SHOW_AXIS_LABELS,
-        show_zlabels=GRID_SHOW_AXIS_LABELS,
-        xtitle=GRID_AXIS_TITLE,
-        ytitle=GRID_AXIS_TITLE,
-        ztitle=GRID_AXIS_TITLE,
+        show_xlabels=config.GRID_SHOW_AXIS_LABELS,
+        show_ylabels=config.GRID_SHOW_AXIS_LABELS,
+        show_zlabels=config.GRID_SHOW_AXIS_LABELS,
+        xtitle=config.GRID_AXIS_TITLE,
+        ytitle=config.GRID_AXIS_TITLE,
+        ztitle=config.GRID_AXIS_TITLE,
     )
-    if ENABLE_TERRAIN_STYLE:
+    if config.ENABLE_TERRAIN_STYLE:
         plotter.enable_terrain_style()
-    plotter.camera.up = CAMERA_UP
+    plotter.camera.up = config.CAMERA_UP
     plotter.view_isometric()
     return plotter
 
