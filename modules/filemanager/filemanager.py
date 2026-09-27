@@ -1,7 +1,5 @@
 """
-filemanager
-This will load
-yaml layout files, csv asset data files.
+This will load a yaml layout file and csv asset data files.
 """
 from pathlib import Path
 
@@ -63,16 +61,8 @@ def loadassets():
     asset_data = asset_data.merge(model_data, on="MODELNO", how="left")
 
     expected_columns = [
-            "INDEX",
-            "NAME",
-            "ROW",
-            "RACK",
-            "RACK_UNIT",
-            "MODELNO",
-            "SIZE",
-            "POWERLOAD",
-            "AIRFLOW DIRECTION",
-            "FUNCTION"
+            "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+            "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"
         ]
 
     print(asset_data.columns.tolist())

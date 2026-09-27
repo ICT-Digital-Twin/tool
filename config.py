@@ -1,4 +1,6 @@
-"""Application paths, scene dimensions, and PyVista appearance settings."""
+"""
+Variables for paths and PyVista theme.
+"""
 from pathlib import Path
 
 import pyvista as pv

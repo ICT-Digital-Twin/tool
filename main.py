@@ -1,16 +1,15 @@
 """
 ICT Digital Twin Tool
-main.py
 PD
 2026
 """
 from config import OUTPUT_DIR
-from modules.filemanager.filemanager import checkoutputdir, loadroom, loadassets
-from modules.display.display import display_assets
+from modules.filemanager import checkoutputdir, loadroom, loadassets
+from modules.display import display_assets
 
 
 def main():
-    """Run the ICT Digital Twin Tool entry point."""
+    """ICT Digital Twin Tool entry point."""
     checkoutputdir(OUTPUT_DIR)
 
     room_layout_data = loadroom()

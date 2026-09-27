@@ -1,6 +1,5 @@
 """
-display
-This will display the loaded data.
+This will display the room and asset data with PyVista.
 """
 from __future__ import annotations
 
