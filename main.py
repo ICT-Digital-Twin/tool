@@ -10,6 +10,7 @@ from modules.display.display import display_assets
 
 
 def main():
+    """Run the ICT Digital Twin Tool entry point."""
     checkoutputdir(OUTPUT_DIR)
 
     room_layout_data = loadroom()
@@ -23,6 +24,7 @@ def main():
         return
 
     display_assets(asset_data, room_layout_data)
+
 
 if __name__ == "__main__":
     main()
