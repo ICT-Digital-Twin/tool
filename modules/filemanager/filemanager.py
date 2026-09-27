@@ -5,12 +5,12 @@ yaml layout files, csv asset data files.
 """
 from pathlib import Path
 
+from tkinter import filedialog
 import pandas as pd
 import yaml
-from tkinter import filedialog
-
 
 def checkoutputdir(output_dir):
+    """Function checking if the output directory exists."""
     output_path = Path(output_dir)
     if not output_path.exists():
         output_path.mkdir(parents=True)
@@ -21,6 +21,7 @@ def checkoutputdir(output_dir):
 
 
 def loadroom():
+    """Function to load a yaml file for room layout."""
     print("Select YAML file for room layout")
     room_layout_file = filedialog.askopenfilename(
         title="Select a file",
@@ -37,6 +38,7 @@ def loadroom():
 
 
 def loadassets():
+    """Function to load asset data from CSV files."""
     print("Select CSV file for asset data")
     asset_data_file = filedialog.askopenfilename(
         title="Select Asset Data CSV",
@@ -64,6 +66,7 @@ def loadassets():
         by=["ROW", "RACK", "RACK_UNIT"],
         ascending=[True, True, False],
     )
+
     expected_columns = [
             "INDEX",
             "NAME",
@@ -73,10 +76,10 @@ def loadassets():
             "SIZE",
             "MODELNO",
         ]
+
     print(asset_data.columns.tolist())
 
     if list(asset_data.columns) == expected_columns:
         print("Schema validation PASSED")
     else:
         print("Schema validation FAILED")
-
