@@ -1,0 +1,62 @@
+INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
+1,Compute Node 01,A,A01,1,R670
+2,Compute Node 02,A,A01,2,R670
+3,Compute Node 03,A,A01,3,R670
+4,Compute Node 04,A,A01,4,R670
+5,Compute Node 01,A,A01,9,R670
+6,Compute Node 02,A,A01,10,R670
+7,Compute Node 03,A,A01,11,R670
+8,Compute Node 04,A,A01,12,R670
+9,TOR A01A,A,A01,41,C93180
+10,TOR A01B,A,A01,42,C93180
+11,Virtualisation Cluster 01,A,A02,1,R770
+12,Virtualisation Cluster 02,A,A02,3,R770
+13,Virtualisation Cluster 03,A,A02,5,R770
+14,Virtualisation Cluster 01,A,A02,11,R770
+15,Virtualisation Cluster 02,A,A02,13,R770
+16,Virtualisation Cluster 03,A,A02,15,R770
+17,TOR A02A,A,A02,41,C93180
+18,TOR A02B,A,A02,42,C93180
+19,Virtualisation Cluster 04,A,A03,1,R770
+20,Virtualisation Cluster 05,A,A03,3,R770
+21,Database Server 01,A,A03,5,R770
+22,TOR A03A,A,A03,41,C93180
+23,TOR A03B,A,A03,42,C93180
+24,Database Server 02,A,A04,1,R770
+25,Application Server 01,A,A04,3,R770
+26,Application Server 02,A,A04,5,R770
+27,TOR A04A,A,A04,41,C93180
+28,TOR A04B,A,A04,42,C93180
+29,AI Training Node 01,A,A05,1,XE9680
+30,AI Training Node 02,A,A05,7,XE9680
+31,TOR A05A,A,A05,41,C93180
+32,TOR A05B,A,A05,42,C93180
+33,Compute Node 05,B,B01,1,R670
+34,Compute Node 06,B,B01,2,R670
+35,Compute Node 07,B,B01,3,R670
+36,Compute Node 08,B,B01,4,R670
+37,TOR B01A,B,B01,41,C93180
+38,TOR B01B,B,B01,42,C93180
+39,Virtualisation Cluster 06,B,B02,1,R770
+40,Virtualisation Cluster 07,B,B02,3,R770
+41,Virtualisation Cluster 08,B,B02,5,R770
+42,TOR B02A,B,B02,41,C93180
+43,TOR B02B,B,B02,42,C93180
+44,Kubernetes Node 01,B,B03,1,R770
+45,Kubernetes Node 02,B,B03,3,R770
+46,Kubernetes Node 03,B,B03,5,R770
+47,TOR B03A,B,B03,41,C93180
+48,TOR B03B,B,B03,42,C93180
+49,Backup Server 01,B,B04,1,R770
+50,Monitoring Server 01,B,B04,3,R770
+51,Management Server 01,B,B04,5,R770
+52,TOR B04A,B,B04,41,C93180
+53,TOR B04B,B,B04,42,C93180
+54,SAN Controller A,B,B05,1,PowerStore Elite
+55,SAN Controller B,B,B05,5,PowerStore Elite
+56,Core Switch 01,B,B05,35,PowerSwitch Z-Series
+57,Core Switch 02,B,B05,36,PowerSwitch Z-Series
+58,SAN Switch A,B,B05,38,Brocade FC Switch
+59,SAN Switch B,B,B05,39,Brocade FC Switch
+60,TOR B05A,B,B05,41,C93180
+61,TOR B05B,B,B05,42,C93180
