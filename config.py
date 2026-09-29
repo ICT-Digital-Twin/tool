@@ -3,7 +3,7 @@ Variables for paths and PyVista theme.
 """
 from pathlib import Path
 
-import pyvista as pv
+PYVISTA_THEME = None
 
 
 OUTPUT_DIR = Path("data/output")
@@ -18,7 +18,7 @@ AISLE_WIDTH = 1.0
 DEVICE_WIDTH_RATIO = 0.9
 DEVICE_DEPTH_RATIO = 0.9
 
-PYVISTA_THEME = pv.themes.DarkTheme
+PYVISTA_THEME = None
 BACKGROUND_COLOR = "#17202a"
 ROOM_COLOR = "#475569"
 ROOM_OPACITY = 0.25
@@ -47,9 +47,12 @@ ENABLE_TERRAIN_STYLE = True
 CAMERA_UP = (0, 0, 1)
 
 
-def create_pyvista_theme() -> pv.themes.Theme:
+def create_pyvista_theme():
     """Create a PyVista theme using the configured base and scene colors."""
-    theme = PYVISTA_THEME()
+    import pyvista as pv
+
+    theme_class = PYVISTA_THEME or pv.themes.DarkTheme
+    theme = theme_class()
     theme.background = BACKGROUND_COLOR
     theme.font.color = TEXT_COLOR
     theme.edge_color = DEVICE_EDGE_COLOR

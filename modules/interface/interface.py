@@ -3,7 +3,6 @@ from pathlib import Path
 from tkinter import filedialog
 
 import dearpygui.dearpygui as dpg
-import pyvista as pv
 
 import config
 from modules.display import display_assets
@@ -105,6 +104,7 @@ def run_interface() -> None:
 			dpg.set_value("rack_height_value", f"{config.RACK_HEIGHT:.3f} m")
 
 	def update_theme(_sender: int, value: str, _user_data: object = None) -> None:
+		import pyvista as pv
 		config.PYVISTA_THEME = getattr(pv.themes, value)
 
 	def update_color(_sender: int, value: list[int], setting: str | tuple[str, str]) -> None:

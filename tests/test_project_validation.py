@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +13,20 @@ from modules.filemanager.filemanager import asset_schema_validation_message, che
 
 
 class ProjectValidationTests(unittest.TestCase):
+    def test_pyvista_and_dearpygui_can_be_imported_in_order(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import pyvista; import dearpygui.dearpygui as dpg; print('ok', dpg.__file__)",
+            ],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("ok", result.stdout)
+
     def test_asset_schema_validation_message_reports_matching_columns(self):
         asset_data = pd.DataFrame(columns=[
             "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
