@@ -91,7 +91,9 @@ Mouseover any device to view asset data.
 The ROW field is used to distribute racks per row.  Rows are rendered in pairs...
 
 
+## Running on a VM
 
+[ document the fix for the omesa.dll problem on VMs here ]
 
 ## Files
 
