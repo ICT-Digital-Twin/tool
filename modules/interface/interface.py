@@ -7,7 +7,7 @@ import pyvista as pv
 
 import config
 from modules.display import display_assets
-from modules.filemanager import loadassets, loadroom
+from modules.filemanager import asset_schema_validation_message, loadassets, loadroom
 
 
 def run_interface() -> None:
@@ -88,7 +88,7 @@ def run_interface() -> None:
 			return
 		state["asset_data"] = asset_data
 		dpg.set_value("model_file_label", Path(file_path).name)
-		set_status(f"Loaded {len(asset_data)} assets.")
+		set_status(f"Loaded {len(asset_data)} assets.\n{asset_schema_validation_message(asset_data)}")
 		update_view_button()
 
 	def update_config_value(_sender: int, value: object, setting: str) -> None:
@@ -153,7 +153,7 @@ def run_interface() -> None:
 
 	try:
 		dpg.create_context()
-		with dpg.window(label="ICT Digital Twin", tag="main_window", width=600, height=480):
+		with dpg.window(label="ICT Digital Twin", tag="main_window", width=640, height=640):
 			dpg.add_text("Load the room layout and both data files")
 			dpg.add_separator()
 			dpg.add_button(label="Load room layout YAML", callback=load_room_callback, width=220)
@@ -221,7 +221,7 @@ def run_interface() -> None:
 
 			dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
 
-		dpg.create_viewport(title="ICT Digital Twin", width=1024, height=768)
+		dpg.create_viewport(title="ICT Digital Twin", width=640, height=640)
 		dpg.setup_dearpygui()
 		dpg.show_viewport()
 		dpg.set_primary_window("main_window", True)

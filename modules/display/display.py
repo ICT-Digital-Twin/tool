@@ -91,6 +91,24 @@ def build_scene(
     )
     rack_spacing = config.RACK_WIDTH + config.RACK_GAP
     row_values = list(asset_data["ROW"].drop_duplicates())
+    powerloads = (
+        pd.to_numeric(asset_data["POWERLOAD"], errors="coerce").fillna(0)
+        if "POWERLOAD" in asset_data
+        else pd.Series(0, index=asset_data.index)
+    )
+    room_powerload = powerloads.sum()
+    power_data = room_layout_data.get("power", {}) if room_layout_data else {}
+    available_feed_power = []
+    if isinstance(power_data, Mapping):
+        for feed in ("a", "b"):
+            capacity = power_data.get(f"feed_{feed}_capacity")
+            if capacity is not None:
+                available_feed_power.append(_number(capacity, 0))
+    total_power_available = sum(available_feed_power) if available_feed_power else None
+    row_powerloads = {
+        row: powerloads.loc[asset_data["ROW"] == row].sum()
+        for row in row_values
+    }
     row_racks = {
         row: list(asset_data.loc[asset_data["ROW"] == row, "RACK"].drop_duplicates())
         for row in row_values
@@ -205,6 +223,33 @@ def build_scene(
         viewport=True,
         render=False,
     )
+    room_power_label = plotter.add_text(
+        f"Room powerload: {room_powerload:g} W",
+        position=(0.98, 0.02),
+        font_size=config.HOVER_FONT_SIZE,
+        color=config.TEXT_COLOR,
+        name="room_powerload",
+        viewport=True,
+        render=False,
+    )
+    room_power_label.GetTextProperty().SetJustificationToRight()
+    room_power_label.GetTextProperty().SetVerticalJustificationToBottom()
+    available_power_text = (
+        f"{total_power_available:g} W available"
+        if total_power_available is not None
+        else "available power: N/A"
+    )
+    power_summary_label = plotter.add_text(
+        f"Room power: {room_powerload:g} W consumed / {available_power_text}",
+        position=(0.98, 0.98),
+        font_size=config.HOVER_FONT_SIZE,
+        color=config.TEXT_COLOR,
+        name="room_power_summary",
+        viewport=True,
+        render=False,
+    )
+    power_summary_label.GetTextProperty().SetJustificationToRight()
+    power_summary_label.GetTextProperty().SetVerticalJustificationToTop()
     # pylint: disable=no-member
     picker = vtk.vtkCellPicker()
     # pylint: enable=no-member
@@ -213,10 +258,11 @@ def build_scene(
         picker.AddPickList(device_actor)
     last_details = None
     last_rack_powerload = None
+    last_power_text = f"Room powerload: {room_powerload:g} W"
 
     def update_hover(_caller: object, _event: str) -> None:
         """Update hover label content while the mouse moves."""
-        nonlocal last_details, last_rack_powerload
+        nonlocal last_details, last_rack_powerload, last_power_text
         x, y = interactor.get_event_position()
         picker.Pick(x, y, 0, plotter.renderer)
         picked_actor = picker.GetActor()
@@ -234,6 +280,14 @@ def build_scene(
             )
             rack_power_label.SetInput(text)
             last_rack_powerload = rack_powerload
+        power_text = (
+            f"Row powerload: {row_powerloads.get(rack_info[0], room_powerload):g} W"
+            if rack_info
+            else f"Room powerload: {room_powerload:g} W"
+        )
+        if power_text != last_power_text:
+            room_power_label.SetInput(power_text)
+            last_power_text = power_text
 
     interactor.add_observer("MouseMoveEvent", update_hover)
 
@@ -258,4 +312,4 @@ def display_assets(
 ) -> None:
     """Build and display the 3D asset scene."""
     plotter = build_scene(asset_data, room_layout_data)
-    plotter.show(window_size=[1200, 800])
+    plotter.show(window_size=[1024, 768])

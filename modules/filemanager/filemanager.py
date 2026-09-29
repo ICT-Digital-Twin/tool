@@ -18,6 +18,17 @@ def checkoutputdir(output_dir):
     return output_path
 
 
+def asset_schema_validation_message(asset_data):
+    """Return the validation status for the merged asset data columns."""
+    expected_columns = [
+        "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+        "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"
+    ]
+    if list(asset_data.columns) == expected_columns:
+        return "Schema validation PASSED"
+    return "Schema validation FAILED"
+
+
 def loadroom(file_path=None):
     """Function to load a yaml file for room layout."""
     room_layout_file = file_path
@@ -63,18 +74,6 @@ def loadassets(asset_data_file=None, model_data_file=None):
 
     model_data = pd.read_csv(model_data_file)
     asset_data = asset_data.merge(model_data, on="MODELNO", how="left")
-
-    expected_columns = [
-            "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
-            "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"
-        ]
-
-    print(asset_data.columns.tolist())
-
-    if list(asset_data.columns) == expected_columns:
-        print("Schema validation PASSED")
-    else:
-        print("Schema validation FAILED")
 
     return asset_data.sort_values(
         by=["ROW", "RACK", "RACK_UNIT"],

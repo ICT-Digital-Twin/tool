@@ -65,9 +65,9 @@ room:
 
 power:
   feed_a_voltage: Feed Voltage in volts
-  feed_a_capacity: Feed Voltage in volts
+  feed_a_capacity: Feed capacity in watts
   feed_b_voltage: Feed Voltage in volts
-  feed_b_capacity: Feed Voltage in volts
+  feed_b_capacity: Feed capacity in watts
 ```
 
 #### loadassets

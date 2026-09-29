@@ -7,10 +7,23 @@ import pandas as pd
 import pyvista as pv
 
 from main import main
-from modules.filemanager.filemanager import checkoutputdir, loadassets
+from modules.filemanager.filemanager import asset_schema_validation_message, checkoutputdir, loadassets
 
 
 class ProjectValidationTests(unittest.TestCase):
+    def test_asset_schema_validation_message_reports_matching_columns(self):
+        asset_data = pd.DataFrame(columns=[
+            "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+            "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION",
+        ])
+
+        self.assertEqual(asset_schema_validation_message(asset_data), "Schema validation PASSED")
+
+    def test_asset_schema_validation_message_reports_mismatched_columns(self):
+        asset_data = pd.DataFrame(columns=["NAME", "ROW"])
+
+        self.assertEqual(asset_schema_validation_message(asset_data), "Schema validation FAILED")
+
     def test_loadassets_sorts_by_row_rack_and_descending_rack_unit(self):
         asset_data = pd.DataFrame(
             [
@@ -235,10 +248,14 @@ class ProjectValidationTests(unittest.TestCase):
         with patch.object(pv.Plotter, "add_text") as mock_add_text, patch.object(pv.Plotter, "add_axes") as mock_add_axes:
             build_scene(asset_data)
 
-        self.assertEqual(mock_add_text.call_count, 2)
+        self.assertEqual(mock_add_text.call_count, 4)
         self.assertEqual(mock_add_text.call_args_list[0].kwargs["name"], "asset_hover")
         self.assertEqual(mock_add_text.call_args_list[1].kwargs["name"], "rack_powerload")
         self.assertEqual(mock_add_text.call_args_list[1].kwargs["position"], (0.02, 0.02))
+        self.assertEqual(mock_add_text.call_args_list[2].kwargs["name"], "room_powerload")
+        self.assertEqual(mock_add_text.call_args_list[2].kwargs["position"], (0.98, 0.02))
+        self.assertEqual(mock_add_text.call_args_list[3].kwargs["name"], "room_power_summary")
+        self.assertEqual(mock_add_text.call_args_list[3].kwargs["position"], (0.98, 0.98))
         mock_add_axes.assert_not_called()
 
     def test_build_scene_shows_asset_details_on_mouseover(self):
@@ -261,15 +278,39 @@ class ProjectValidationTests(unittest.TestCase):
                     "SIZE": 1,
                     "MODELNO": "MODEL-Y",
                     "POWERLOAD": 850,
-                }
+                },
+                {
+                    "NAME": "ASSET-003",
+                    "ROW": 2,
+                    "RACK": "RACK-02",
+                    "RACK_UNIT": 1,
+                    "SIZE": 1,
+                    "MODELNO": "MODEL-Z",
+                    "POWERLOAD": 200,
+                },
             ]
         )
 
         from modules.display.display import build_scene
 
-        plotter = build_scene(asset_data)
+        room_layout = {
+            "power": {
+                "feed_a_voltage": 400,
+                "feed_a_capacity": 80000,
+                "feed_b_voltage": 400,
+                "feed_b_capacity": 80000,
+            }
+        }
+        plotter = build_scene(asset_data, room_layout)
         try:
             plotter.render()
+            room_power_label = plotter.actors["room_powerload"]
+            power_summary = plotter.actors["room_power_summary"]
+            self.assertEqual(
+                power_summary.GetInput(),
+                "Room power: 1500 W consumed / 160000 W available",
+            )
+            self.assertEqual(room_power_label.GetInput(), "Room powerload: 1500 W")
             renderer = plotter.renderer
             renderer.SetWorldPoint(0, 0, 0.01, 1)
             renderer.WorldToDisplay()
@@ -285,6 +326,11 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertIn("NAME: ASSET-002", hover_text)
             self.assertIn("MODELNO: MODEL-Y", hover_text)
             self.assertEqual(rack_power_label.GetInput(), "Rack powerload: 1300 W")
+            self.assertEqual(room_power_label.GetInput(), "Row powerload: 1300 W")
+            self.assertEqual(
+                power_summary.GetInput(),
+                "Room power: 1500 W consumed / 160000 W available",
+            )
         finally:
             plotter.close()
 
