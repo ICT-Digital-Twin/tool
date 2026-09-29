@@ -1,5 +1,6 @@
 """Dear PyGui interface for loading data and opening the 3D view."""
 from pathlib import Path
+from tkinter import filedialog
 
 import dearpygui.dearpygui as dpg
 import pyvista as pv
@@ -17,7 +18,10 @@ def run_interface() -> None:
 		"model_path": None,
 		"asset_data": None,
 	}
-	default_path = str(Path.cwd())
+
+	def select_file(title: str, filetypes: list[tuple[str, str]]) -> str:
+		"""Open a native Tkinter file chooser and return the selected path."""
+		return filedialog.askopenfilename(title=title, filetypes=filetypes)
 
 	def set_status(message: str) -> None:
 		dpg.set_value("status_label", message)
@@ -26,8 +30,11 @@ def run_interface() -> None:
 		ready = state["room_layout"] is not None and state["asset_data"] is not None
 		dpg.configure_item("view_button", enabled=ready)
 
-	def load_room_callback(_sender: int, app_data: dict, _user_data: object = None) -> None:
-		file_path = app_data.get("file_path_name")
+	def load_room_callback(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
+		file_path = select_file(
+			"Select room layout",
+			[("YAML files", "*.yaml"), ("YAML files", "*.yml")],
+		)
 		if not file_path:
 			return
 		try:
@@ -42,8 +49,11 @@ def run_interface() -> None:
 		set_status("Room layout loaded.")
 		update_view_button()
 
-	def load_asset_callback(_sender: int, app_data: dict, _user_data: object = None) -> None:
-		file_path = app_data.get("file_path_name")
+	def load_asset_callback(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
+		file_path = select_file(
+			"Select asset data CSV",
+			[("CSV files", "*.csv"), ("All files", "*.*")],
+		)
 		if not file_path:
 			return
 		state["asset_path"] = file_path
@@ -55,8 +65,11 @@ def run_interface() -> None:
 		set_status("Asset CSV selected. Select the model-details CSV to continue.")
 		update_view_button()
 
-	def load_model_callback(_sender: int, app_data: dict, _user_data: object = None) -> None:
-		file_path = app_data.get("file_path_name")
+	def load_model_callback(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
+		file_path = select_file(
+			"Select model details CSV",
+			[("CSV files", "*.csv"), ("All files", "*.*")],
+		)
 		if not file_path:
 			return
 		if state["asset_path"] is None:
@@ -140,16 +153,16 @@ def run_interface() -> None:
 
 	try:
 		dpg.create_context()
-		with dpg.window(label="ICT Digital Twin", tag="main_window", width=540, height=390):
+		with dpg.window(label="ICT Digital Twin", tag="main_window", width=600, height=480):
 			dpg.add_text("Load the room layout and both data files")
 			dpg.add_separator()
-			dpg.add_button(label="Load room layout YAML", callback=lambda: dpg.show_item("room_dialog"), width=220)
+			dpg.add_button(label="Load room layout YAML", callback=load_room_callback, width=220)
 			dpg.add_text("Not selected", tag="room_file_label")
 			dpg.add_spacer(height=6)
-			dpg.add_button(label="Load asset data CSV", callback=lambda: dpg.show_item("asset_dialog"), width=220)
+			dpg.add_button(label="Load asset data CSV", callback=load_asset_callback, width=220)
 			dpg.add_text("Not selected", tag="asset_file_label")
 			dpg.add_spacer(height=6)
-			dpg.add_button(label="Load model details CSV", tag="model_button", enabled=False, callback=lambda: dpg.show_item("model_dialog"), width=220)
+			dpg.add_button(label="Load model details CSV", tag="model_button", enabled=False, callback=load_model_callback, width=220)
 			dpg.add_text("Not selected", tag="model_file_label")
 			dpg.add_separator()
 			dpg.add_button(label="Open 3D view", tag="view_button", enabled=False, callback=open_view, width=220)
@@ -207,40 +220,6 @@ def run_interface() -> None:
 				)
 
 			dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
-
-		with dpg.file_dialog(
-			directory_selector=False,
-			show=False,
-			callback=load_room_callback,
-			tag="room_dialog",
-			width=700,
-			height=400,
-			default_path=default_path,
-		):
-			dpg.add_file_extension(".yaml")
-			dpg.add_file_extension(".yml")
-
-		with dpg.file_dialog(
-			directory_selector=False,
-			show=False,
-			callback=load_asset_callback,
-			tag="asset_dialog",
-			width=700,
-			height=400,
-			default_path=default_path,
-		):
-			dpg.add_file_extension(".csv")
-
-		with dpg.file_dialog(
-			directory_selector=False,
-			show=False,
-			callback=load_model_callback,
-			tag="model_dialog",
-			width=700,
-			height=400,
-			default_path=default_path,
-		):
-			dpg.add_file_extension(".csv")
 
 		dpg.create_viewport(title="ICT Digital Twin", width=1024, height=768)
 		dpg.setup_dearpygui()

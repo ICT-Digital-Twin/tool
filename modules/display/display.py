@@ -258,4 +258,4 @@ def display_assets(
 ) -> None:
     """Build and display the 3D asset scene."""
     plotter = build_scene(asset_data, room_layout_data)
-    plotter.show()
+    plotter.show(window_size=[1200, 800])
