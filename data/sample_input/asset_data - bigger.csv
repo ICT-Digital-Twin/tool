@@ -3,22 +3,22 @@ INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
 2,Compute Node 02,A,A01,2,R670
 3,Compute Node 03,A,A01,3,R670
 4,Compute Node 04,A,A01,4,R670
-5,Compute Node 01,A,A01,9,R670
-6,Compute Node 02,A,A01,10,R670
-7,Compute Node 03,A,A01,11,R670
-8,Compute Node 04,A,A01,12,R670
+5,Compute Node 05,A,A01,9,R670
+6,Compute Node 06,A,A01,10,R670
+7,Compute Node 07,A,A01,11,R670
+8,Compute Node 08,A,A01,12,R670
 9,TOR A01A,A,A01,41,C93180
 10,TOR A01B,A,A01,42,C93180
 11,Virtualisation Cluster 01,A,A02,1,R770
 12,Virtualisation Cluster 02,A,A02,3,R770
 13,Virtualisation Cluster 03,A,A02,5,R770
-14,Virtualisation Cluster 01,A,A02,11,R770
-15,Virtualisation Cluster 02,A,A02,13,R770
-16,Virtualisation Cluster 03,A,A02,15,R770
+14,Virtualisation Cluster 04,A,A02,11,R770
+15,Virtualisation Cluster 05,A,A02,13,R770
+16,Virtualisation Cluster 06,A,A02,15,R770
 17,TOR A02A,A,A02,41,C93180
 18,TOR A02B,A,A02,42,C93180
-19,Virtualisation Cluster 04,A,A03,1,R770
-20,Virtualisation Cluster 05,A,A03,3,R770
+19,Virtualisation Cluster 07,A,A03,1,R770
+20,Virtualisation Cluster 08,A,A03,3,R770
 21,Database Server 01,A,A03,5,R770
 22,TOR A03A,A,A03,41,C93180
 23,TOR A03B,A,A03,42,C93180
@@ -31,15 +31,15 @@ INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
 30,AI Training Node 02,A,A05,7,XE9680
 31,TOR A05A,A,A05,41,C93180
 32,TOR A05B,A,A05,42,C93180
-33,Compute Node 05,B,B01,1,R670
-34,Compute Node 06,B,B01,2,R670
-35,Compute Node 07,B,B01,3,R670
-36,Compute Node 08,B,B01,4,R670
+33,Compute Node 09,B,B01,1,R670
+34,Compute Node 10,B,B01,2,R670
+35,Compute Node 11,B,B01,3,R670
+36,Compute Node 12,B,B01,4,R670
 37,TOR B01A,B,B01,41,C93180
 38,TOR B01B,B,B01,42,C93180
-39,Virtualisation Cluster 06,B,B02,1,R770
-40,Virtualisation Cluster 07,B,B02,3,R770
-41,Virtualisation Cluster 08,B,B02,5,R770
+39,Virtualisation Cluster 09,B,B02,1,R770
+40,Virtualisation Cluster 10,B,B02,3,R770
+41,Virtualisation Cluster 11,B,B02,5,R770
 42,TOR B02A,B,B02,41,C93180
 43,TOR B02B,B,B02,42,C93180
 44,Kubernetes Node 01,B,B03,1,R770
@@ -60,3 +60,64 @@ INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
 59,SAN Switch B,B,B05,39,Brocade FC Switch
 60,TOR B05A,B,B05,41,C93180
 61,TOR B05B,B,B05,42,C93180
+,Compute Node 13,A,C01,1,R670
+,Compute Node 14,A,C01,2,R670
+,Compute Node 15,A,C01,3,R670
+,Compute Node 16,A,C01,4,R670
+,Compute Node 17,A,C01,9,R670
+,Compute Node 18,A,C01,10,R670
+,Compute Node 19,A,C01,11,R670
+,Compute Node 20,A,C01,12,R670
+,TOR C01A,A,C01,41,C93180
+,TOR C01B,A,C01,42,C93180
+,Virtualisation Cluster 12,A,C02,1,R770
+,Virtualisation Cluster 13,A,C02,3,R770
+,Virtualisation Cluster 14,A,C02,5,R770
+,Virtualisation Cluster 15,A,C02,11,R770
+,Virtualisation Cluster 16,A,C02,13,R770
+,Virtualisation Cluster 17,A,C02,15,R770
+,TOR C02A,A,C02,41,C93180
+,TOR C02B,A,C02,42,C93180
+,Virtualisation Cluster 18,A,C03,1,R770
+,Virtualisation Cluster 19,A,C03,3,R770
+,Database Server 03,A,C03,5,R770
+,TOR C03A,A,C03,41,C93180
+,TOR C03B,A,C03,42,C93180
+,Database Server 04,A,C04,1,R770
+,Application Server 03,A,C04,3,R770
+,Application Server 04,A,C04,5,R770
+,TOR C04A,A,C04,41,C93180
+,TOR C04B,A,C04,42,C93180
+,AI Training Node 03,A,C05,1,XE9680
+,AI Training Node 04,A,C05,7,XE9680
+,TOR C05A,A,C05,41,C93180
+,TOR C05B,A,C05,42,C93180
+,Compute Node 21,B,D01,1,R670
+,Compute Node 22,B,D01,2,R670
+,Compute Node 23,B,D01,3,R670
+,Compute Node 24,B,D01,4,R670
+,TOR D01A,B,D01,41,C93180
+,TOR D01B,B,D01,42,C93180
+,Virtualisation Cluster 20,B,D02,1,R770
+,Virtualisation Cluster 21,B,D02,3,R770
+,Virtualisation Cluster 22,B,D02,5,R770
+,TOR D02A,B,D02,41,C93180
+,TOR D02B,B,D02,42,C93180
+,Kubernetes Node 04,B,D03,1,R770
+,Kubernetes Node 05,B,D03,3,R770
+,Kubernetes Node 06,B,D03,5,R770
+,TOR D03A,B,D03,41,C93180
+,TOR D03B,B,D03,42,C93180
+,Backup Server 02,B,D04,1,R770
+,Monitoring Server 02,B,D04,3,R770
+,Management Server 02,B,D04,5,R770
+,TOR D04A,B,D04,41,C93180
+,TOR D04B,B,D04,42,C93180
+,SAN Controller C,B,D05,1,PowerStore Elite
+,SAN Controller D,B,D05,5,PowerStore Elite
+,Core Switch 03,B,D05,35,PowerSwitch Z-Series
+,Core Switch 04,B,D05,36,PowerSwitch Z-Series
+,SAN Switch C,B,D05,38,Brocade FC Switch
+,SAN Switch D,B,D05,39,Brocade FC Switch
+,TOR D05A,B,D05,41,C93180
+,TOR D05B,B,D05,42,C93180
