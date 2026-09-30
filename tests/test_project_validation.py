@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pyvista as pv
@@ -267,7 +267,7 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(mock_add_text.call_count, 4)
         self.assertEqual(mock_add_text.call_args_list[0].kwargs["name"], "asset_hover")
         self.assertEqual(mock_add_text.call_args_list[1].kwargs["name"], "rack_powerload")
-        self.assertEqual(mock_add_text.call_args_list[1].kwargs["position"], (0.02, 0.02))
+        self.assertEqual(mock_add_text.call_args_list[1].kwargs["position"], (0.98, 0.10))
         self.assertEqual(mock_add_text.call_args_list[2].kwargs["name"], "room_powerload")
         self.assertEqual(mock_add_text.call_args_list[2].kwargs["position"], (0.98, 0.02))
         self.assertEqual(mock_add_text.call_args_list[3].kwargs["name"], "room_power_summary")
@@ -349,6 +349,42 @@ class ProjectValidationTests(unittest.TestCase):
             )
         finally:
             plotter.close()
+
+    def test_export_button_saves_png_to_configured_output_directory(self):
+        from modules.display.display import _add_export_button
+
+        plotter = MagicMock()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output_path = Path(temporary_directory) / "pyvista_view.png"
+            with patch("modules.display.display.config.OUTPUT_DIR", Path(temporary_directory)):
+                _add_export_button(plotter)
+
+            callback = plotter.add_checkbox_button_widget.call_args.args[0]
+            callback(False)
+
+        plotter.screenshot.assert_called_once_with(output_path, return_img=False)
+        plotter.add_text.return_value.SetInput.assert_called_once_with("PNG exported")
+        representation = plotter.add_checkbox_button_widget.return_value.GetRepresentation()
+        representation.SetButtonTexture.assert_called_once_with(
+            1,
+            representation.GetButtonTexture.return_value,
+        )
+        representation.PlaceWidget.assert_called_once_with((10, 150, 10, 46, 0, 0))
+
+    def test_export_button_reports_screenshot_failures(self):
+        from modules.display.display import _add_export_button
+
+        plotter = MagicMock()
+        plotter.screenshot.side_effect = OSError("disk unavailable")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with patch("modules.display.display.config.OUTPUT_DIR", Path(temporary_directory)):
+                _add_export_button(plotter)
+            callback = plotter.add_checkbox_button_widget.call_args.args[0]
+            callback(False)
+
+        plotter.add_text.return_value.SetInput.assert_called_once_with(
+            "PNG export failed: disk unavailable",
+        )
 
 
 if __name__ == "__main__":

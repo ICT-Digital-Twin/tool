@@ -146,13 +146,10 @@ def run_interface() -> None:
 		)
 
 	def open_view(_sender: int, _app_data: object, _user_data: object = None) -> None:
-		dpg.minimize_viewport()
 		try:
 			display_assets(state["asset_data"], state["room_layout"])
 		except Exception as error:
 			set_status(f"Could not open 3D view: {error}")
-		finally:
-			dpg.show_viewport()
 
 	try:
 		dpg.create_context()

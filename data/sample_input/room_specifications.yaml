@@ -1,6 +1,6 @@
 room:
   width: 10
-  length: 10
+  length: 6
   height: 2
 
 power:
@@ -12,4 +12,5 @@ power:
   feed_c_capacity: 80000
   feed_d_voltage: 400
   feed_d_capacity: 80000
+  rpdu_capacity: 14000
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from colorsys import hsv_to_rgb
+from pathlib import Path
 
 import pandas as pd
 import pyvista as pv
@@ -216,13 +217,15 @@ def build_scene(
     hover_label.GetTextProperty().SetVerticalJustificationToTop()
     rack_power_label = plotter.add_text(
         "",
-        position=(0.02, 0.02),
+        position=(0.98, 0.10),
         font_size=config.HOVER_FONT_SIZE,
         color=config.TEXT_COLOR,
         name="rack_powerload",
         viewport=True,
         render=False,
     )
+    rack_power_label.GetTextProperty().SetJustificationToRight()
+    rack_power_label.GetTextProperty().SetVerticalJustificationToBottom()
     room_power_label = plotter.add_text(
         f"Room powerload: {room_powerload:g} W",
         position=(0.98, 0.02),
@@ -291,19 +294,61 @@ def build_scene(
 
     interactor.add_observer("MouseMoveEvent", update_hover)
 
-    plotter.show_grid(
-        show_xlabels=config.GRID_SHOW_AXIS_LABELS,
-        show_ylabels=config.GRID_SHOW_AXIS_LABELS,
-        show_zlabels=config.GRID_SHOW_AXIS_LABELS,
-        xtitle=config.GRID_AXIS_TITLE,
-        ytitle=config.GRID_AXIS_TITLE,
-        ztitle=config.GRID_AXIS_TITLE,
-    )
+    if config.GRID_SHOW_AXIS_LABELS:
+        plotter.show_grid(
+            show_xlabels=True,
+            show_ylabels=True,
+            show_zlabels=True,
+            xtitle=config.GRID_AXIS_TITLE,
+            ytitle=config.GRID_AXIS_TITLE,
+            ztitle=config.GRID_AXIS_TITLE,
+        )
     if config.ENABLE_TERRAIN_STYLE:
         plotter.enable_terrain_style()
     plotter.camera.up = config.CAMERA_UP
     plotter.view_isometric()
     return plotter
+
+
+def _add_export_button(plotter: pv.Plotter) -> None:
+    """Add a button that exports the current camera view as a PNG."""
+    output_path = Path(config.OUTPUT_DIR) / "pyvista_view.png"
+    export_status = plotter.add_text(
+        "PNG not exported",
+        position=(10, 55),
+        font_size=config.HOVER_FONT_SIZE,
+        color=config.TEXT_COLOR,
+    )
+
+    def export_view(_value: bool) -> None:
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            plotter.screenshot(output_path, return_img=False)
+        except Exception as error:
+            export_status.SetInput(f"PNG export failed: {error}")
+            return
+        export_status.SetInput("PNG exported")
+
+    button = plotter.add_checkbox_button_widget(
+        export_view,
+        value=False,
+        position=(10, 10),
+        size=140,
+        border_size=2,
+        color_on=config.DEVICE_COLOR,
+        color_off=config.RACK_COLOR,
+        background_color=config.BACKGROUND_COLOR,
+    )
+    representation = button.GetRepresentation()
+    button_texture = representation.GetButtonTexture(0)
+    representation.SetButtonTexture(1, button_texture)
+    representation.PlaceWidget((10, 150, 10, 46, 0, 0))
+    plotter.add_text(
+        "Export PNG",
+        position=(24, 19),
+        font_size=config.HOVER_FONT_SIZE,
+        color=config.TEXT_COLOR,
+    )
 
 
 def display_assets(
@@ -312,4 +357,5 @@ def display_assets(
 ) -> None:
     """Build and display the 3D asset scene."""
     plotter = build_scene(asset_data, room_layout_data)
+    _add_export_button(plotter)
     plotter.show(window_size=[1024, 768])
