@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pandas as pd
 import pyvista as pv
-import vtk
 
 import config
 
@@ -71,12 +70,7 @@ def build_scene(
         raise ValueError(f"asset_data is missing required columns: {missing}")
 
     plotter = pv.Plotter(theme=config.create_pyvista_theme())
-    interactor = plotter.iren
-    if interactor is None:
-        raise RuntimeError("The PyVista plotter has no render-window interactor")
 
-    device_details = {}
-    device_racks = {}
     function_colors = _function_colors(asset_data)
     room_width = room_length = room_height = 0
     if room_layout_data:
@@ -92,24 +86,6 @@ def build_scene(
     )
     rack_spacing = config.RACK_WIDTH + config.RACK_GAP
     row_values = list(asset_data["ROW"].drop_duplicates())
-    powerloads = (
-        pd.to_numeric(asset_data["POWERLOAD"], errors="coerce").fillna(0)
-        if "POWERLOAD" in asset_data
-        else pd.Series(0, index=asset_data.index)
-    )
-    room_powerload = powerloads.sum()
-    power_data = room_layout_data.get("power", {}) if room_layout_data else {}
-    available_feed_power = []
-    if isinstance(power_data, Mapping):
-        for feed in ("a", "b"):
-            capacity = power_data.get(f"feed_{feed}_capacity")
-            if capacity is not None:
-                available_feed_power.append(_number(capacity, 0))
-    total_power_available = sum(available_feed_power) if available_feed_power else None
-    row_powerloads = {
-        row: powerloads.loc[asset_data["ROW"] == row].sum()
-        for row in row_values
-    }
     row_racks = {
         row: list(asset_data.loc[asset_data["ROW"] == row, "RACK"].drop_duplicates())
         for row in row_values
@@ -169,12 +145,6 @@ def build_scene(
         )
 
         rack_assets = asset_data[(asset_data["ROW"] == row) & (asset_data["RACK"] == rack)]
-        powerloads = (
-            rack_assets["POWERLOAD"]
-            if "POWERLOAD" in rack_assets
-            else pd.Series(0, index=rack_assets.index)
-        )
-        rack_powerload = pd.to_numeric(powerloads, errors="coerce").fillna(0).sum()
         for asset in rack_assets.itertuples(index=False):
             rack_unit = _number(getattr(asset, "RACK_UNIT"), 1.0)
             unit_size = _number(getattr(asset, "SIZE"), 1.0)
@@ -190,7 +160,7 @@ def build_scene(
                     center_z + height / 2,
                 )
             )
-            device_actor = plotter.add_mesh(
+            plotter.add_mesh(
                 device,
                 color=function_colors.get(
                     str(getattr(asset, "FUNCTION", "")).strip(),
@@ -199,100 +169,6 @@ def build_scene(
                 show_edges=config.SHOW_DEVICE_EDGES,
                 edge_color=config.DEVICE_EDGE_COLOR,
             )
-            device_details[device_actor] = "\n".join(
-                f"{column}: {value}"
-                for column, value in zip(asset_data.columns, asset)
-            )
-            device_racks[device_actor] = (row, rack, rack_powerload)
-
-    hover_label = plotter.add_text(
-        "",
-        position=config.HOVER_TEXT_POSITION,
-        font_size=config.HOVER_FONT_SIZE,
-        color=config.TEXT_COLOR,
-        name="asset_hover",
-        viewport=True,
-        render=False,
-    )
-    hover_label.GetTextProperty().SetVerticalJustificationToTop()
-    rack_power_label = plotter.add_text(
-        "",
-        position=(0.98, 0.10),
-        font_size=config.HOVER_FONT_SIZE,
-        color=config.TEXT_COLOR,
-        name="rack_powerload",
-        viewport=True,
-        render=False,
-    )
-    rack_power_label.GetTextProperty().SetJustificationToRight()
-    rack_power_label.GetTextProperty().SetVerticalJustificationToBottom()
-    room_power_label = plotter.add_text(
-        f"Room powerload: {room_powerload:g} W",
-        position=(0.98, 0.02),
-        font_size=config.HOVER_FONT_SIZE,
-        color=config.TEXT_COLOR,
-        name="room_powerload",
-        viewport=True,
-        render=False,
-    )
-    room_power_label.GetTextProperty().SetJustificationToRight()
-    room_power_label.GetTextProperty().SetVerticalJustificationToBottom()
-    available_power_text = (
-        f"{total_power_available:g} W available"
-        if total_power_available is not None
-        else "available power: N/A"
-    )
-    power_summary_label = plotter.add_text(
-        f"Room power: {room_powerload:g} W consumed / {available_power_text}",
-        position=(0.98, 0.98),
-        font_size=config.HOVER_FONT_SIZE,
-        color=config.TEXT_COLOR,
-        name="room_power_summary",
-        viewport=True,
-        render=False,
-    )
-    power_summary_label.GetTextProperty().SetJustificationToRight()
-    power_summary_label.GetTextProperty().SetVerticalJustificationToTop()
-    # pylint: disable=no-member
-    picker = vtk.vtkCellPicker()
-    # pylint: enable=no-member
-    picker.PickFromListOn()
-    for device_actor in device_details:
-        picker.AddPickList(device_actor)
-    last_details = None
-    last_rack_powerload = None
-    last_power_text = f"Room powerload: {room_powerload:g} W"
-
-    def update_hover(_caller: object, _event: str) -> None:
-        """Update hover label content while the mouse moves."""
-        nonlocal last_details, last_rack_powerload, last_power_text
-        x, y = interactor.get_event_position()
-        picker.Pick(x, y, 0, plotter.renderer)
-        picked_actor = picker.GetActor()
-        details = device_details.get(picked_actor)
-        rack_info = device_racks.get(picked_actor)
-        if details != last_details:
-            hover_label.SetInput(details or "")
-            last_details = details
-        rack_powerload = rack_info[2] if rack_info else None
-        if rack_powerload != last_rack_powerload:
-            text = (
-                f"Rack powerload: {rack_powerload:g} W"
-                if rack_powerload is not None
-                else ""
-            )
-            rack_power_label.SetInput(text)
-            last_rack_powerload = rack_powerload
-        power_text = (
-            f"Row powerload: {row_powerloads.get(rack_info[0], room_powerload):g} W"
-            if rack_info
-            else f"Room powerload: {room_powerload:g} W"
-        )
-        if power_text != last_power_text:
-            room_power_label.SetInput(power_text)
-            last_power_text = power_text
-
-    interactor.add_observer("MouseMoveEvent", update_hover)
 
     if config.GRID_SHOW_AXIS_LABELS:
         plotter.show_grid(
@@ -314,7 +190,7 @@ def _add_export_button(plotter: pv.Plotter) -> None:
     """Add a button that exports the current camera view as a PNG."""
     output_path = Path(config.OUTPUT_DIR) / "pyvista_view.png"
     export_status = plotter.add_text(
-        "PNG not exported",
+        "",
         position=(10, 55),
         font_size=config.HOVER_FONT_SIZE,
         color=config.TEXT_COLOR,
@@ -345,7 +221,7 @@ def _add_export_button(plotter: pv.Plotter) -> None:
     representation.PlaceWidget((10, 150, 10, 46, 0, 0))
     plotter.add_text(
         "Export PNG",
-        position=(24, 19),
+        position=(60, 19),
         font_size=config.HOVER_FONT_SIZE,
         color=config.TEXT_COLOR,
     )

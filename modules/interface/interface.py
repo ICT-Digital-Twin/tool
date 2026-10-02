@@ -1,17 +1,28 @@
 """Dear PyGui interface for loading data and opening the 3D view."""
+from collections.abc import Mapping
 from pathlib import Path
 from tkinter import filedialog
+from typing import TypedDict
 
 import dearpygui.dearpygui as dpg
+import pandas as pd
 
 import config
 from modules.display import display_assets
 from modules.filemanager import asset_schema_validation_message, loadassets, loadroom
 
 
+class InterfaceState(TypedDict):
+	"""Loaded room and asset inputs used by the interface callbacks."""
+	room_layout: Mapping[str, object] | None
+	asset_path: str | None
+	model_path: str | None
+	asset_data: pd.DataFrame | None
+
+
 def run_interface() -> None:
 	"""Create and run the application interface."""
-	state = {
+	state: InterfaceState = {
 		"room_layout": None,
 		"asset_path": None,
 		"model_path": None,
@@ -94,7 +105,7 @@ def run_interface() -> None:
 		if setting == "OUTPUT_DIR":
 			if isinstance(value, str):
 				config.OUTPUT_DIR = Path(value)
-		elif setting in ("CAMERA_UP", "HOVER_TEXT_POSITION"):
+		elif setting == "CAMERA_UP":
 			if isinstance(value, (tuple, list)):
 				setattr(config, setting, tuple(float(component) for component in value))
 		else:
@@ -146,13 +157,18 @@ def run_interface() -> None:
 		)
 
 	def open_view(_sender: int, _app_data: object, _user_data: object = None) -> None:
+		asset_data = state["asset_data"]
+		room_layout = state["room_layout"]
+		if asset_data is None or room_layout is None:
+			return
 		try:
-			display_assets(state["asset_data"], state["room_layout"])
+			display_assets(asset_data, room_layout)
 		except Exception as error:
 			set_status(f"Could not open 3D view: {error}")
 
 	try:
 		dpg.create_context()
+		dpg.configure_app(manual_callback_management=True)
 		with dpg.window(label="ICT Digital Twin", tag="main_window", width=640, height=640):
 			dpg.add_text("Load the room layout and both data files")
 			dpg.add_separator()
@@ -225,6 +241,9 @@ def run_interface() -> None:
 		dpg.setup_dearpygui()
 		dpg.show_viewport()
 		dpg.set_primary_window("main_window", True)
-		dpg.start_dearpygui()
+		while dpg.is_dearpygui_running():
+			callbacks = dpg.get_callback_queue()
+			dpg.run_callbacks(callbacks)
+			dpg.render_dearpygui_frame()
 	finally:
 		dpg.destroy_context()

@@ -134,6 +134,22 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(colors["Compute"], "#010203")
         self.assertNotEqual(colors["Unclassified"], "#040506")
 
+    def test_export_status_is_blank_until_png_is_exported(self):
+        from modules.display.display import _add_export_button
+
+        plotter = MagicMock()
+        with patch("modules.display.display.Path.mkdir"):
+            _add_export_button(plotter)
+
+        export_status = plotter.add_text.return_value
+        self.assertEqual(plotter.add_text.call_args_list[0].args[0], "")
+        self.assertEqual(plotter.add_text.call_args_list[1].kwargs["position"], (60, 19))
+        export_callback = plotter.add_checkbox_button_widget.call_args.args[0]
+        export_callback(False)
+
+        plotter.screenshot.assert_called_once()
+        export_status.SetInput.assert_called_once_with("PNG exported")
+
     def test_build_scene_accepts_valid_asset_dataframe(self):
         asset_data = pd.DataFrame(
             [
@@ -251,7 +267,7 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertNotIn("Function color brightness", interface_source)
         self.assertNotIn('with dpg.collapsing_header(label="Display"', interface_source)
 
-    def test_build_scene_has_no_rack_or_axis_labels(self):
+    def test_build_scene_has_no_information_or_axis_labels(self):
         asset_data = pd.DataFrame(
             [
                 {"NAME": "ASSET-001", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 1, "SIZE": 1},
@@ -264,91 +280,8 @@ class ProjectValidationTests(unittest.TestCase):
         with patch.object(pv.Plotter, "add_text") as mock_add_text, patch.object(pv.Plotter, "add_axes") as mock_add_axes:
             build_scene(asset_data)
 
-        self.assertEqual(mock_add_text.call_count, 4)
-        self.assertEqual(mock_add_text.call_args_list[0].kwargs["name"], "asset_hover")
-        self.assertEqual(mock_add_text.call_args_list[1].kwargs["name"], "rack_powerload")
-        self.assertEqual(mock_add_text.call_args_list[1].kwargs["position"], (0.98, 0.10))
-        self.assertEqual(mock_add_text.call_args_list[2].kwargs["name"], "room_powerload")
-        self.assertEqual(mock_add_text.call_args_list[2].kwargs["position"], (0.98, 0.02))
-        self.assertEqual(mock_add_text.call_args_list[3].kwargs["name"], "room_power_summary")
-        self.assertEqual(mock_add_text.call_args_list[3].kwargs["position"], (0.98, 0.98))
+        mock_add_text.assert_not_called()
         mock_add_axes.assert_not_called()
-
-    def test_build_scene_shows_asset_details_on_mouseover(self):
-        asset_data = pd.DataFrame(
-            [
-                {
-                    "NAME": "ASSET-001",
-                    "ROW": 1,
-                    "RACK": "RACK-01",
-                    "RACK_UNIT": 1,
-                    "SIZE": 1,
-                    "MODELNO": "MODEL-X",
-                    "POWERLOAD": 450,
-                },
-                {
-                    "NAME": "ASSET-002",
-                    "ROW": 1,
-                    "RACK": "RACK-01",
-                    "RACK_UNIT": 2,
-                    "SIZE": 1,
-                    "MODELNO": "MODEL-Y",
-                    "POWERLOAD": 850,
-                },
-                {
-                    "NAME": "ASSET-003",
-                    "ROW": 2,
-                    "RACK": "RACK-02",
-                    "RACK_UNIT": 1,
-                    "SIZE": 1,
-                    "MODELNO": "MODEL-Z",
-                    "POWERLOAD": 200,
-                },
-            ]
-        )
-
-        from modules.display.display import build_scene
-
-        room_layout = {
-            "power": {
-                "feed_a_voltage": 400,
-                "feed_a_capacity": 80000,
-                "feed_b_voltage": 400,
-                "feed_b_capacity": 80000,
-            }
-        }
-        plotter = build_scene(asset_data, room_layout)
-        try:
-            plotter.render()
-            room_power_label = plotter.actors["room_powerload"]
-            power_summary = plotter.actors["room_power_summary"]
-            self.assertEqual(
-                power_summary.GetInput(),
-                "Room power: 1500 W consumed / 160000 W available",
-            )
-            self.assertEqual(room_power_label.GetInput(), "Room powerload: 1500 W")
-            renderer = plotter.renderer
-            renderer.SetWorldPoint(0, 0, 0.01, 1)
-            renderer.WorldToDisplay()
-            x, y, _ = renderer.GetDisplayPoint()
-            plotter.iren.interactor.SetEventPosition(int(x), int(y))
-            plotter.iren.interactor.InvokeEvent("MouseMoveEvent")
-
-            hover_label = plotter.actors["asset_hover"]
-            hover_text = hover_label.GetInput()
-            rack_power_label = plotter.actors["rack_powerload"]
-            self.assertAlmostEqual(hover_label.position[0], 0.02)
-            self.assertAlmostEqual(hover_label.position[1], 0.98)
-            self.assertIn("NAME: ASSET-002", hover_text)
-            self.assertIn("MODELNO: MODEL-Y", hover_text)
-            self.assertEqual(rack_power_label.GetInput(), "Rack powerload: 1300 W")
-            self.assertEqual(room_power_label.GetInput(), "Row powerload: 1300 W")
-            self.assertEqual(
-                power_summary.GetInput(),
-                "Room power: 1500 W consumed / 160000 W available",
-            )
-        finally:
-            plotter.close()
 
     def test_export_button_saves_png_to_configured_output_directory(self):
         from modules.display.display import _add_export_button
