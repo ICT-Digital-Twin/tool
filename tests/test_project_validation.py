@@ -121,6 +121,18 @@ class ProjectValidationTests(unittest.TestCase):
         mock_check.assert_called_once()
         mock_interface.assert_called_once_with()
 
+    def test_stop_web_servers_stops_and_clears_handles(self):
+        from modules.interface.interface import _stop_web_servers
+
+        servers = [MagicMock(), MagicMock()]
+        server_handles = servers.copy()
+
+        _stop_web_servers(servers)
+
+        for server in server_handles:
+            server.stop.assert_called_once_with()
+        self.assertEqual(servers, [])
+
     def test_function_colors_use_live_configuration(self):
         from modules.display.display import _function_colors
 
@@ -133,22 +145,6 @@ class ProjectValidationTests(unittest.TestCase):
 
         self.assertEqual(colors["Compute"], "#010203")
         self.assertNotEqual(colors["Unclassified"], "#040506")
-
-    def test_export_status_is_blank_until_png_is_exported(self):
-        from modules.display.display import _add_export_button
-
-        plotter = MagicMock()
-        with patch("modules.display.display.Path.mkdir"):
-            _add_export_button(plotter)
-
-        export_status = plotter.add_text.return_value
-        self.assertEqual(plotter.add_text.call_args_list[0].args[0], "")
-        self.assertEqual(plotter.add_text.call_args_list[1].kwargs["position"], (60, 19))
-        export_callback = plotter.add_checkbox_button_widget.call_args.args[0]
-        export_callback(False)
-
-        plotter.screenshot.assert_called_once()
-        export_status.SetInput.assert_called_once_with("PNG exported")
 
     def test_build_scene_accepts_valid_asset_dataframe(self):
         asset_data = pd.DataFrame(
@@ -283,40 +279,70 @@ class ProjectValidationTests(unittest.TestCase):
         mock_add_text.assert_not_called()
         mock_add_axes.assert_not_called()
 
-    def test_export_button_saves_png_to_configured_output_directory(self):
-        from modules.display.display import _add_export_button
+    def test_data_figure_contains_inventory_and_visualizations(self):
+        from modules.datadisplay import build_data_figure
+        import plotly.graph_objects as go
 
-        plotter = MagicMock()
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            output_path = Path(temporary_directory) / "pyvista_view.png"
-            with patch("modules.display.display.config.OUTPUT_DIR", Path(temporary_directory)):
-                _add_export_button(plotter)
-
-            callback = plotter.add_checkbox_button_widget.call_args.args[0]
-            callback(False)
-
-        plotter.screenshot.assert_called_once_with(output_path, return_img=False)
-        plotter.add_text.return_value.SetInput.assert_called_once_with("PNG exported")
-        representation = plotter.add_checkbox_button_widget.return_value.GetRepresentation()
-        representation.SetButtonTexture.assert_called_once_with(
-            1,
-            representation.GetButtonTexture.return_value,
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "RACK": "A01", "FUNCTION": "Compute", "POWERLOAD": 450},
+                {"NAME": "Switch A", "RACK": "A01", "FUNCTION": "Network", "POWERLOAD": 80},
+            ]
         )
-        representation.PlaceWidget.assert_called_once_with((10, 150, 10, 46, 0, 0))
 
-    def test_export_button_reports_screenshot_failures(self):
-        from modules.display.display import _add_export_button
+        figure = build_data_figure(asset_data)
+
+        self.assertIsInstance(figure, go.Figure)
+        self.assertEqual(len(figure.data), 3)
+        self.assertIsInstance(figure.data[0], go.Table)
+        self.assertEqual(list(figure.data[0].header.values), list(asset_data.columns))
+        self.assertEqual(list(figure.data[1].y), [1, 1])
+        self.assertEqual(list(figure.data[2].y), [530])
+
+    def test_data_layout_places_vtk_and_plotly_in_one_panel_row(self):
+        from modules.datadisplay import build_data_layout
+        from modules.display.display import build_scene
+        import panel as pn
+
+        asset_data = pd.DataFrame(
+            [{"NAME": "Server A", "ROW": 1, "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1}]
+        )
+        plotter = build_scene(asset_data)
+        try:
+            layout = build_data_layout(asset_data, plotter)
+            self.assertIsInstance(layout, pn.Row)
+            self.assertIn("VTK", type(layout[0]).__name__)
+            self.assertIs(layout[0].object, plotter.ren_win)
+            self.assertIsInstance(layout[1], pn.pane.Plotly)
+            self.assertEqual(len(layout.objects), 2)
+        finally:
+            plotter.close()
+
+    def test_display_data_serves_combined_layout_in_browser(self):
+        from modules.datadisplay import datadisplay
 
         plotter = MagicMock()
-        plotter.screenshot.side_effect = OSError("disk unavailable")
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            with patch("modules.display.display.config.OUTPUT_DIR", Path(temporary_directory)):
-                _add_export_button(plotter)
-            callback = plotter.add_checkbox_button_widget.call_args.args[0]
-            callback(False)
+        layout = MagicMock()
+        server = MagicMock()
+        with patch("modules.datadisplay.datadisplay.build_data_layout", return_value=layout), patch(
+            "modules.datadisplay.datadisplay.pn.serve", return_value=server
+        ) as mock_serve:
+            result = datadisplay.display_data(pd.DataFrame(), plotter)
 
-        plotter.add_text.return_value.SetInput.assert_called_once_with(
-            "PNG export failed: disk unavailable",
+        self.assertIs(result, server)
+        mock_serve.assert_called_once_with(
+            layout,
+            port=0,
+            show=True,
+            threaded=True,
+            title="ICT Digital Twin",
+            extra_patterns=[
+                (
+                    r"/ict-digital-twin/(.*)",
+                    datadisplay.StaticFileHandler,
+                    {"path": str(datadisplay._VTK_INTERACTION_SCRIPT.parent)},
+                )
+            ],
         )
 
 

@@ -2,13 +2,14 @@
 from collections.abc import Mapping
 from pathlib import Path
 from tkinter import filedialog
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import dearpygui.dearpygui as dpg
 import pandas as pd
 
 import config
-from modules.display import display_assets
+from modules.datadisplay import display_data
+from modules.display import build_scene
 from modules.filemanager import asset_schema_validation_message, loadassets, loadroom
 
 
@@ -20,8 +21,16 @@ class InterfaceState(TypedDict):
 	asset_data: pd.DataFrame | None
 
 
+def _stop_web_servers(servers: list[Any]) -> None:
+	"""Stop and clear the threaded visualization servers."""
+	for server in servers:
+		server.stop()
+	servers.clear()
+
+
 def run_interface() -> None:
 	"""Create and run the application interface."""
+	web_servers: list[Any] = []
 	state: InterfaceState = {
 		"room_layout": None,
 		"asset_path": None,
@@ -162,9 +171,13 @@ def run_interface() -> None:
 		if asset_data is None or room_layout is None:
 			return
 		try:
-			display_assets(asset_data, room_layout)
+			plotter = build_scene(asset_data, room_layout)
+			web_servers.append(display_data(asset_data, plotter))
 		except Exception as error:
-			set_status(f"Could not open 3D view: {error}")
+			set_status(f"Could not open combined view: {error}")
+
+	def close_viewport(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
+		_stop_web_servers(web_servers)
 
 	try:
 		dpg.create_context()
@@ -238,6 +251,7 @@ def run_interface() -> None:
 			dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
 
 		dpg.create_viewport(title="ICT Digital Twin", width=640, height=640)
+		dpg.set_exit_callback(close_viewport)
 		dpg.setup_dearpygui()
 		dpg.show_viewport()
 		dpg.set_primary_window("main_window", True)
@@ -246,4 +260,5 @@ def run_interface() -> None:
 			dpg.run_callbacks(callbacks)
 			dpg.render_dearpygui_frame()
 	finally:
+		_stop_web_servers(web_servers)
 		dpg.destroy_context()

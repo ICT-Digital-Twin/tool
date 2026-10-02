@@ -1,8 +1,9 @@
 """
 Display module.
 """
-from .display import display_assets
+from .display import build_scene, display_assets
 
 __all__ = [
-"display_assets"
+"build_scene",
+"display_assets",
 ]

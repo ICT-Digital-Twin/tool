@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from colorsys import hsv_to_rgb
-from pathlib import Path
 
 import pandas as pd
 import pyvista as pv
@@ -186,52 +185,10 @@ def build_scene(
     return plotter
 
 
-def _add_export_button(plotter: pv.Plotter) -> None:
-    """Add a button that exports the current camera view as a PNG."""
-    output_path = Path(config.OUTPUT_DIR) / "pyvista_view.png"
-    export_status = plotter.add_text(
-        "",
-        position=(10, 55),
-        font_size=config.HOVER_FONT_SIZE,
-        color=config.TEXT_COLOR,
-    )
-
-    def export_view(_value: bool) -> None:
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            plotter.screenshot(output_path, return_img=False)
-        except Exception as error:
-            export_status.SetInput(f"PNG export failed: {error}")
-            return
-        export_status.SetInput("PNG exported")
-
-    button = plotter.add_checkbox_button_widget(
-        export_view,
-        value=False,
-        position=(10, 10),
-        size=140,
-        border_size=2,
-        color_on=config.DEVICE_COLOR,
-        color_off=config.RACK_COLOR,
-        background_color=config.BACKGROUND_COLOR,
-    )
-    representation = button.GetRepresentation()
-    button_texture = representation.GetButtonTexture(0)
-    representation.SetButtonTexture(1, button_texture)
-    representation.PlaceWidget((10, 150, 10, 46, 0, 0))
-    plotter.add_text(
-        "Export PNG",
-        position=(60, 19),
-        font_size=config.HOVER_FONT_SIZE,
-        color=config.TEXT_COLOR,
-    )
-
-
 def display_assets(
     asset_data: pd.DataFrame,
     room_layout_data: Mapping[str, object] | None = None,
 ) -> None:
     """Build and display the 3D asset scene."""
     plotter = build_scene(asset_data, room_layout_data)
-    _add_export_button(plotter)
     plotter.show(window_size=[1024, 768])
