@@ -1,6 +1,7 @@
 """Build and open interactive Plotly views of asset data."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import pandas as pd
@@ -14,7 +15,27 @@ _VTK_INTERACTION_SCRIPT = Path(__file__).with_name("static") / "z_up_interaction
 _VTK_INTERACTION_URL = "/ict-digital-twin/z_up_interaction.js"
 
 
-def build_data_figure(asset_data: pd.DataFrame) -> go.Figure:
+def _extract_rpdu_capacity(room_layout_data: Mapping[str, object] | None) -> float | None:
+    """Return the configured RPDU capacity from the room layout, if present."""
+    if not isinstance(room_layout_data, Mapping):
+        return None
+
+    power_data = room_layout_data.get("power", {})
+    if not isinstance(power_data, Mapping):
+        return None
+
+    value = power_data.get("rpdu_capacity")
+    try:
+        capacity = float(value)
+    except (TypeError, ValueError):
+        return None
+    return capacity if capacity > 0 else None
+
+
+def build_data_figure(
+    asset_data: pd.DataFrame,
+    room_layout_data: Mapping[str, object] | None = None,
+) -> go.Figure:
     """Build an inventory table with function and rack visualizations."""
     if not isinstance(asset_data, pd.DataFrame):
         raise TypeError("asset_data must be a pandas DataFrame")
@@ -38,10 +59,28 @@ def build_data_figure(asset_data: pd.DataFrame) -> go.Figure:
         horizontal_spacing=0.08,
     )
 
-    columns = [str(column) for column in asset_data.columns]
+    display_columns = [
+        column
+        for column in asset_data.columns
+        if str(column).strip().upper() not in {"INDEX", "AIRFLOW DIRECTION"}
+    ]
+    header_labels = {
+        "NAME": "NAME",
+        "ROW": "ROW",
+        "RACK": "RACK",
+        "RACK_UNIT": "Unit",
+        "MODELNO": "Model",
+        "SIZE": "Size",
+        "POWERLOAD": "Power",
+        "FUNCTION": "Funct",
+    }
+    columns = [
+        header_labels.get(str(column).strip().upper(), str(column))
+        for column in display_columns
+    ]
     cell_values = [
         asset_data[column].fillna("").astype(str).tolist()
-        for column in asset_data.columns
+        for column in display_columns
     ]
     row_colors = ["#ffffff" if index % 2 == 0 else "#f1f5f4" for index in range(len(asset_data))]
     figure.add_trace(
@@ -50,7 +89,7 @@ def build_data_figure(asset_data: pd.DataFrame) -> go.Figure:
             header={
                 "values": columns,
                 "fill_color": "#254b4a",
-                "font": {"color": "white", "size": 12},
+                "font": {"color": "white", "size": 10},
                 "align": "left",
                 "height": 30,
             },
@@ -90,11 +129,27 @@ def build_data_figure(asset_data: pd.DataFrame) -> go.Figure:
             rack_values = rack_data.groupby(rack_column, dropna=False)[power_column].sum()
         else:
             rack_values = rack_data.groupby(rack_column, dropna=False).size()
+        rack_x = rack_values.index.astype(str).tolist()
+        rack_y = rack_values.values.tolist()
         figure.add_trace(
-            go.Bar(x=rack_values.index.astype(str).tolist(), y=rack_values.values.tolist(), marker_color="#d18a46"),
+            go.Bar(x=rack_x, y=rack_y, marker_color="#d18a46"),
             row=2,
             col=2,
         )
+        rpdu_capacity = _extract_rpdu_capacity(room_layout_data)
+        if rpdu_capacity is not None:
+            figure.add_trace(
+                go.Scatter(
+                    x=rack_x,
+                    y=[rpdu_capacity] * len(rack_x),
+                    mode="lines",
+                    line={"color": "#b42318", "width": 2, "dash": "dash"},
+                    name="RPDU capacity",
+                    hovertemplate="RPDU capacity: %{y}<extra></extra>",
+                ),
+                row=2,
+                col=2,
+            )
     else:
         figure.add_trace(go.Bar(x=[], y=[]), row=2, col=2)
 
@@ -113,7 +168,11 @@ def build_data_figure(asset_data: pd.DataFrame) -> go.Figure:
     return figure
 
 
-def build_data_layout(asset_data: pd.DataFrame, plotter: object) -> pn.Row:
+def build_data_layout(
+    asset_data: pd.DataFrame,
+    plotter: object,
+    room_layout_data: Mapping[str, object] | None = None,
+) -> pn.Row:
     """Build a shared browser layout for the 3D scene and asset dashboard."""
     pn.extension(
         "vtk",
@@ -123,7 +182,7 @@ def build_data_layout(asset_data: pd.DataFrame, plotter: object) -> pn.Row:
     return pn.Row(
         pn.pane.VTK(plotter.ren_win, sizing_mode="stretch_both", min_height=800),
         pn.pane.Plotly(
-            build_data_figure(asset_data),
+            build_data_figure(asset_data, room_layout_data),
             config={"responsive": True},
             sizing_mode="stretch_both",
             min_height=800,
@@ -133,9 +192,13 @@ def build_data_layout(asset_data: pd.DataFrame, plotter: object) -> pn.Row:
     )
 
 
-def display_data(asset_data: pd.DataFrame, plotter: object) -> object:
+def display_data(
+    asset_data: pd.DataFrame,
+    plotter: object,
+    room_layout_data: Mapping[str, object] | None = None,
+) -> object:
     """Serve the shared visualization page and open it in the default browser."""
-    layout = build_data_layout(asset_data, plotter)
+    layout = build_data_layout(asset_data, plotter, room_layout_data)
     return pn.serve(
         layout,
         port=0,

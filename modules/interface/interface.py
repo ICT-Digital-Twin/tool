@@ -25,7 +25,22 @@ def _stop_web_servers(servers: list[Any]) -> None:
 	"""Stop and clear the threaded visualization servers."""
 	for server in servers:
 		server.stop()
+		server.join()
 	servers.clear()
+
+
+def _shutdown_interface(servers: list[Any]) -> None:
+	"""Stop any active web servers and close the Dear PyGui context safely."""
+	_stop_web_servers(servers)
+	try:
+		if dpg.is_dearpygui_running():
+			dpg.stop_dearpygui()
+	except Exception:
+		pass
+	try:
+		dpg.destroy_context()
+	except Exception:
+		pass
 
 
 def run_interface() -> None:
@@ -172,12 +187,12 @@ def run_interface() -> None:
 			return
 		try:
 			plotter = build_scene(asset_data, room_layout)
-			web_servers.append(display_data(asset_data, plotter))
+			web_servers.append(display_data(asset_data, plotter, room_layout))
 		except Exception as error:
 			set_status(f"Could not open combined view: {error}")
 
 	def close_viewport(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
-		_stop_web_servers(web_servers)
+		_shutdown_interface(web_servers)
 
 	try:
 		dpg.create_context()
@@ -260,5 +275,4 @@ def run_interface() -> None:
 			dpg.run_callbacks(callbacks)
 			dpg.render_dearpygui_frame()
 	finally:
-		_stop_web_servers(web_servers)
-		dpg.destroy_context()
+		_shutdown_interface(web_servers)

@@ -131,6 +131,23 @@ class ProjectValidationTests(unittest.TestCase):
 
         for server in server_handles:
             server.stop.assert_called_once_with()
+            server.join.assert_called_once_with()
+        self.assertEqual(servers, [])
+
+    def test_shutdown_interface_stops_dearpygui_and_closes_context(self):
+        from modules.interface.interface import _shutdown_interface
+
+        server = MagicMock()
+        servers = [server]
+
+        with patch("modules.interface.interface.dpg.is_dearpygui_running", return_value=True), patch(
+            "modules.interface.interface.dpg.stop_dearpygui"
+        ) as mock_stop, patch("modules.interface.interface.dpg.destroy_context") as mock_destroy:
+            _shutdown_interface(servers)
+
+        server.stop.assert_called_once_with()
+        mock_stop.assert_called_once_with()
+        mock_destroy.assert_called_once_with()
         self.assertEqual(servers, [])
 
     def test_function_colors_use_live_configuration(self):
@@ -285,8 +302,26 @@ class ProjectValidationTests(unittest.TestCase):
 
         asset_data = pd.DataFrame(
             [
-                {"NAME": "Server A", "RACK": "A01", "FUNCTION": "Compute", "POWERLOAD": 450},
-                {"NAME": "Switch A", "RACK": "A01", "FUNCTION": "Network", "POWERLOAD": 80},
+                {
+                    "INDEX": 1,
+                    "NAME": "Server A",
+                    "RACK": "A01",
+                    "RACK_UNIT": 1,
+                    "MODELNO": "R670",
+                    "AIRFLOW DIRECTION": "Front-to-Rear",
+                    "FUNCTION": "Compute",
+                    "POWERLOAD": 450,
+                },
+                {
+                    "INDEX": 2,
+                    "NAME": "Switch A",
+                    "RACK": "A01",
+                    "RACK_UNIT": 2,
+                    "MODELNO": "S5200",
+                    "AIRFLOW DIRECTION": "Front-to-Rear",
+                    "FUNCTION": "Network",
+                    "POWERLOAD": 80,
+                },
             ]
         )
 
@@ -295,9 +330,33 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertIsInstance(figure, go.Figure)
         self.assertEqual(len(figure.data), 3)
         self.assertIsInstance(figure.data[0], go.Table)
-        self.assertEqual(list(figure.data[0].header.values), list(asset_data.columns))
+        self.assertEqual(
+            list(figure.data[0].header.values),
+            ["NAME", "RACK", "Unit", "Model", "Funct", "Power"],
+        )
+        self.assertEqual(figure.data[0].header.font.size, 10)
+        self.assertEqual(len(figure.data[0].cells.values), len(figure.data[0].header.values))
         self.assertEqual(list(figure.data[1].y), [1, 1])
         self.assertEqual(list(figure.data[2].y), [530])
+
+    def test_data_figure_includes_rpdu_capacity_reference_line(self):
+        from modules.datadisplay import build_data_figure
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "RACK": "A01", "POWERLOAD": 450},
+                {"NAME": "Switch A", "RACK": "A01", "POWERLOAD": 80},
+            ]
+        )
+        room_layout_data = {"power": {"rpdu_capacity": 14000}}
+
+        figure = build_data_figure(asset_data, room_layout_data)
+
+        self.assertEqual(len(figure.data), 4)
+        reference_trace = figure.data[-1]
+        self.assertEqual(reference_trace.type, "scatter")
+        self.assertEqual(reference_trace.mode, "lines")
+        self.assertTrue(all(value == 14000 for value in reference_trace.y))
 
     def test_data_layout_places_vtk_and_plotly_in_one_panel_row(self):
         from modules.datadisplay import build_data_layout
