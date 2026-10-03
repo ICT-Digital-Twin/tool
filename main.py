@@ -9,7 +9,7 @@ from modules.interface import run_interface
 
 
 def main():
-    """ICT Digital Twin Tool entry point."""
+    """ICT Digital Twin Tool main function."""
     checkoutputdir(config.OUTPUT_DIR)
     run_interface()
 

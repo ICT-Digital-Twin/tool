@@ -4,13 +4,8 @@ room:
   height: 2
 
 power:
-  feed_a_voltage: 400
-  feed_a_capacity: 80000
-  feed_b_voltage: 400
-  feed_b_capacity: 80000
-  feed_c_voltage: 400
-  feed_c_capacity: 80000
-  feed_d_voltage: 400
-  feed_d_capacity: 80000
+  feed_a_capacity: 40000
+  feed_b_capacity: 40000
+  feed_c_capacity: 40000
+  feed_d_capacity: 40000
   rpdu_capacity: 14000
-

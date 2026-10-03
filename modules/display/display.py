@@ -122,6 +122,7 @@ def build_scene(
             style=config.ROOM_RENDER_STYLE,
             color=config.ROOM_COLOR,
             opacity=config.ROOM_OPACITY,
+            line_width=config.ROOM_LINE_WIDTH,
         )
 
     for row, rack in racks:

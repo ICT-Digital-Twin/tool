@@ -305,6 +305,7 @@ class ProjectValidationTests(unittest.TestCase):
                 {
                     "INDEX": 1,
                     "NAME": "Server A",
+                    "ROW": "A",
                     "RACK": "A01",
                     "RACK_UNIT": 1,
                     "MODELNO": "R670",
@@ -315,6 +316,7 @@ class ProjectValidationTests(unittest.TestCase):
                 {
                     "INDEX": 2,
                     "NAME": "Switch A",
+                    "ROW": "A",
                     "RACK": "A01",
                     "RACK_UNIT": 2,
                     "MODELNO": "S5200",
@@ -332,12 +334,41 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertIsInstance(figure.data[0], go.Table)
         self.assertEqual(
             list(figure.data[0].header.values),
-            ["NAME", "RACK", "Unit", "Model", "Funct", "Power"],
+            ["NAME", "ROW", "RACK", "Unit", "Model", "Funct", "Power"],
         )
         self.assertEqual(figure.data[0].header.font.size, 10)
         self.assertEqual(len(figure.data[0].cells.values), len(figure.data[0].header.values))
-        self.assertEqual(list(figure.data[1].y), [1, 1])
+        self.assertEqual(figure.data[1].name, "Power load by row")
+        self.assertEqual(list(figure.data[1].y), [530])
+        self.assertEqual(figure.data[2].name, "Power load by rack")
         self.assertEqual(list(figure.data[2].y), [530])
+
+    def test_data_figure_includes_row_feed_capacity_reference_line(self):
+        from modules.datadisplay import build_data_figure
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "POWERLOAD": 450},
+                {"NAME": "Server B", "ROW": "B", "RACK": "B01", "POWERLOAD": 250},
+            ]
+        )
+        room_layout_data = {
+            "power": {
+                "feed_a_capacity": 1000,
+                "feed_b_capacity": 2000,
+            }
+        }
+
+        figure = build_data_figure(asset_data, room_layout_data)
+
+        self.assertEqual(len(figure.data), 4)
+        self.assertEqual(list(figure.data[1].x), ["A", "B"])
+        self.assertEqual(list(figure.data[1].y), [450, 250])
+        self.assertEqual(figure.data[1].name, "Power load by row")
+        capacity_trace = figure.data[2]
+        self.assertEqual(capacity_trace.type, "scatter")
+        self.assertEqual(capacity_trace.mode, "lines")
+        self.assertEqual(list(capacity_trace.y), [1000, 2000])
 
     def test_data_figure_includes_rpdu_capacity_reference_line(self):
         from modules.datadisplay import build_data_figure
@@ -353,6 +384,7 @@ class ProjectValidationTests(unittest.TestCase):
         figure = build_data_figure(asset_data, room_layout_data)
 
         self.assertEqual(len(figure.data), 4)
+        self.assertEqual(figure.data[2].name, "Power load by rack")
         reference_trace = figure.data[-1]
         self.assertEqual(reference_trace.type, "scatter")
         self.assertEqual(reference_trace.mode, "lines")

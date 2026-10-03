@@ -32,6 +32,26 @@ def _extract_rpdu_capacity(room_layout_data: Mapping[str, object] | None) -> flo
     return capacity if capacity > 0 else None
 
 
+def _extract_feed_capacity(
+    room_layout_data: Mapping[str, object] | None,
+    row: object,
+) -> float | None:
+    """Return the configured feed capacity for a row, if present."""
+    if not isinstance(room_layout_data, Mapping):
+        return None
+
+    power_data = room_layout_data.get("power", {})
+    if not isinstance(power_data, Mapping):
+        return None
+
+    value = power_data.get(f"feed_{str(row).strip().casefold()}_capacity")
+    try:
+        capacity = float(value)
+    except (TypeError, ValueError):
+        return None
+    return capacity if capacity > 0 else None
+
+
 def build_data_figure(
     asset_data: pd.DataFrame,
     room_layout_data: Mapping[str, object] | None = None,
@@ -40,20 +60,17 @@ def build_data_figure(
     if not isinstance(asset_data, pd.DataFrame):
         raise TypeError("asset_data must be a pandas DataFrame")
 
-    category_column = next(
-        (column for column in ("FUNCTION", "MODELNO", "ROW") if column in asset_data),
-        None,
-    )
+    row_column = "ROW" if "ROW" in asset_data else None
     rack_column = "RACK" if "RACK" in asset_data else None
     power_column = "POWERLOAD" if "POWERLOAD" in asset_data else None
-    category_title = f"Assets by {category_column}" if category_column else "Asset count"
+    row_title = "Powerload by Row" if row_column and power_column else "Assets by Row"
     rack_metric = "Power load" if power_column else "Asset count"
 
     figure = make_subplots(
         rows=2,
         cols=2,
         specs=[[{"type": "table", "colspan": 2}, None], [{"type": "bar"}, {"type": "bar"}]],
-        subplot_titles=("Asset inventory", category_title, f"{rack_metric} by rack"),
+        subplot_titles=("Asset inventory", row_title, f"{rack_metric} by rack"),
         row_heights=(0.64, 0.36),
         vertical_spacing=0.12,
         horizontal_spacing=0.08,
@@ -105,20 +122,43 @@ def build_data_figure(
         col=1,
     )
 
-    if category_column:
-        categories = (
-            asset_data[category_column]
-            .fillna("Unspecified")
-            .astype(str)
-            .str.strip()
-            .replace("", "Unspecified")
-            .value_counts()
-        )
+    if row_column:
+        row_data = asset_data.copy()
+        if power_column:
+            row_data[power_column] = pd.to_numeric(row_data[power_column], errors="coerce").fillna(0)
+            row_values = row_data.groupby(row_column, dropna=False)[power_column].sum()
+        else:
+            row_values = row_data.groupby(row_column, dropna=False).size()
+        row_x = row_values.index.astype(str).tolist()
+        row_y = row_values.values.tolist()
         figure.add_trace(
-            go.Bar(x=categories.index.tolist(), y=categories.values.tolist(), marker_color="#4d8b78"),
+            go.Bar(
+                x=row_x,
+                y=row_y,
+                name="watts" if power_column else "assets",
+                marker_color="#d18a46",
+            ),
             row=2,
             col=1,
         )
+        if power_column:
+            row_capacities = [
+                _extract_feed_capacity(room_layout_data, row)
+                for row in row_values.index
+            ]
+            if any(capacity is not None for capacity in row_capacities):
+                figure.add_trace(
+                    go.Scatter(
+                        x=row_x,
+                        y=row_capacities,
+                        mode="lines",
+                        line={"color": "#b42318", "width": 2, "dash": "dash"},
+                        name="Feed capacity",
+                        hovertemplate="Feed %{x} capacity: %{y}<extra></extra>",
+                    ),
+                    row=2,
+                    col=1,
+                )
     else:
         figure.add_trace(go.Bar(x=[], y=[]), row=2, col=1)
 
@@ -132,7 +172,12 @@ def build_data_figure(
         rack_x = rack_values.index.astype(str).tolist()
         rack_y = rack_values.values.tolist()
         figure.add_trace(
-            go.Bar(x=rack_x, y=rack_y, marker_color="#d18a46"),
+            go.Bar(
+                x=rack_x,
+                y=rack_y,
+                name="watts" if power_column else "assets",
+                marker_color="#d18a46",
+            ),
             row=2,
             col=2,
         )
@@ -153,8 +198,8 @@ def build_data_figure(
     else:
         figure.add_trace(go.Bar(x=[], y=[]), row=2, col=2)
 
-    figure.update_xaxes(title_text=category_column or "Category", row=2, col=1)
-    figure.update_yaxes(title_text="Assets", rangemode="tozero", row=2, col=1)
+    figure.update_xaxes(title_text="Row", row=2, col=1)
+    figure.update_yaxes(title_text="Power load" if power_column else "Assets", rangemode="tozero", row=2, col=1)
     figure.update_xaxes(title_text="Rack", row=2, col=2)
     figure.update_yaxes(title_text=rack_metric, rangemode="tozero", row=2, col=2)
     figure.update_layout(

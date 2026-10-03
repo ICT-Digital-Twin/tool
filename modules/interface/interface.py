@@ -197,7 +197,7 @@ def run_interface() -> None:
 	try:
 		dpg.create_context()
 		dpg.configure_app(manual_callback_management=True)
-		with dpg.window(label="ICT Digital Twin", tag="main_window", width=640, height=640):
+		with dpg.window(label="ICT Digital Twin", tag="main_window", width=620, height=740):
 			dpg.add_text("Load the room layout and both data files")
 			dpg.add_separator()
 			dpg.add_button(label="Load room layout YAML", callback=load_room_callback, width=220)
