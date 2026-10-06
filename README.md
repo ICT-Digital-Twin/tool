@@ -19,14 +19,16 @@ power:
 
 ### Asset Data
 
-A CSV file with the following columns: ```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO```
+A CSV file with the following columns:  
+```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO```
 
 This is the asset database arranged into ROWs and RACKs.
 
 
 ### Asset details
 
-A CSV file with the following columns: ```MODELNO  SIZE  POWERLOAD  AIRFLOW  DIRECTION  FUNCTION```
+A CSV file with the following columns:  
+```MODELNO  SIZE  POWERLOAD  AIRFLOW  DIRECTION  FUNCTION```
 
 This is the model detail database to provide device charactestics.
 
