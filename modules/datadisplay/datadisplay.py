@@ -1,4 +1,4 @@
-"""Build and open interactive Plotly views of asset data."""
+"""Build and serve linked Plotly and PyVista views of asset data."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -56,7 +56,7 @@ def build_data_figure(
     asset_data: pd.DataFrame,
     room_layout_data: Mapping[str, object] | None = None,
 ) -> go.Figure:
-    """Build an inventory table with function and rack visualizations."""
+    """Build the row and rack charts used by the inventory dashboard."""
     if not isinstance(asset_data, pd.DataFrame):
         raise TypeError("asset_data must be a pandas DataFrame")
 
@@ -67,59 +67,11 @@ def build_data_figure(
     rack_metric = "Power load" if power_column else "Asset count"
 
     figure = make_subplots(
-        rows=2,
+        rows=1,
         cols=2,
-        specs=[[{"type": "table", "colspan": 2}, None], [{"type": "bar"}, {"type": "bar"}]],
-        subplot_titles=("Asset inventory", row_title, f"{rack_metric} by rack"),
-        row_heights=(0.64, 0.36),
-        vertical_spacing=0.12,
+        specs=[[{"type": "bar"}, {"type": "bar"}]],
+        subplot_titles=(row_title, f"{rack_metric} by rack"),
         horizontal_spacing=0.08,
-    )
-
-    display_columns = [
-        column
-        for column in asset_data.columns
-        if str(column).strip().upper() not in {"INDEX", "AIRFLOW DIRECTION"}
-    ]
-    header_labels = {
-        "NAME": "NAME",
-        "ROW": "ROW",
-        "RACK": "RACK",
-        "RACK_UNIT": "Unit",
-        "MODELNO": "Model",
-        "SIZE": "Size",
-        "POWERLOAD": "Power",
-        "FUNCTION": "Funct",
-    }
-    columns = [
-        header_labels.get(str(column).strip().upper(), str(column))
-        for column in display_columns
-    ]
-    cell_values = [
-        asset_data[column].fillna("").astype(str).tolist()
-        for column in display_columns
-    ]
-    row_colors = ["#ffffff" if index % 2 == 0 else "#f1f5f4" for index in range(len(asset_data))]
-    figure.add_trace(
-        go.Table(
-            columnwidth=[max(80, min(180, len(column) * 11)) for column in columns],
-            header={
-                "values": columns,
-                "fill_color": "#254b4a",
-                "font": {"color": "white", "size": 10},
-                "align": "left",
-                "height": 30,
-            },
-            cells={
-                "values": cell_values,
-                "fill_color": [row_colors] * len(columns),
-                "font": {"color": "#203332", "size": 11},
-                "align": "left",
-                "height": 25,
-            },
-        ),
-        row=1,
-        col=1,
     )
 
     if row_column:
@@ -135,10 +87,11 @@ def build_data_figure(
             go.Bar(
                 x=row_x,
                 y=row_y,
-                name="watts" if power_column else "assets",
+                customdata=[["ROW", value] for value in row_x],
+                name="Power load by row" if power_column else "Assets by row",
                 marker_color="#d18a46",
             ),
-            row=2,
+            row=1,
             col=1,
         )
         if power_column:
@@ -156,11 +109,11 @@ def build_data_figure(
                         name="Feed capacity",
                         hovertemplate="Feed %{x} capacity: %{y}<extra></extra>",
                     ),
-                    row=2,
+                    row=1,
                     col=1,
                 )
     else:
-        figure.add_trace(go.Bar(x=[], y=[]), row=2, col=1)
+        figure.add_trace(go.Bar(x=[], y=[]), row=1, col=1)
 
     if rack_column:
         rack_data = asset_data.copy()
@@ -175,10 +128,11 @@ def build_data_figure(
             go.Bar(
                 x=rack_x,
                 y=rack_y,
-                name="watts" if power_column else "assets",
+                customdata=[["RACK", value] for value in rack_x],
+                name=f"{rack_metric} by rack",
                 marker_color="#d18a46",
             ),
-            row=2,
+            row=1,
             col=2,
         )
         rpdu_capacity = _extract_rpdu_capacity(room_layout_data)
@@ -192,21 +146,21 @@ def build_data_figure(
                     name="RPDU capacity",
                     hovertemplate="RPDU capacity: %{y}<extra></extra>",
                 ),
-                row=2,
+                row=1,
                 col=2,
             )
     else:
-        figure.add_trace(go.Bar(x=[], y=[]), row=2, col=2)
+        figure.add_trace(go.Bar(x=[], y=[]), row=1, col=2)
 
-    figure.update_xaxes(title_text="Row", row=2, col=1)
-    figure.update_yaxes(title_text="Power load" if power_column else "Assets", rangemode="tozero", row=2, col=1)
-    figure.update_xaxes(title_text="Rack", row=2, col=2)
-    figure.update_yaxes(title_text=rack_metric, rangemode="tozero", row=2, col=2)
+    figure.update_xaxes(title_text="Row", row=1, col=1)
+    figure.update_yaxes(title_text="Power load" if power_column else "Assets", rangemode="tozero", row=1, col=1)
+    figure.update_xaxes(title_text="Rack", row=1, col=2)
+    figure.update_yaxes(title_text=rack_metric, rangemode="tozero", row=1, col=2)
     figure.update_layout(
         title="Asset inventory and capacity",
         template="plotly_white",
         autosize=True,
-        height=max(900, min(1800, 700 + len(asset_data) * 20)),
+        height=500,
         showlegend=False,
         margin={"l": 45, "r": 35, "t": 90, "b": 45},
     )
@@ -224,14 +178,170 @@ def build_data_layout(
         "plotly",
         js_files={"ict-digital-twin-z-up": _VTK_INTERACTION_URL},
     )
-    return pn.Row(
-        pn.pane.VTK(plotter.ren_win, sizing_mode="stretch_both", min_height=800),
-        pn.pane.Plotly(
-            build_data_figure(asset_data, room_layout_data),
-            config={"responsive": True},
-            sizing_mode="stretch_both",
-            min_height=800,
+    assets = asset_data.reset_index(drop=True)
+    rack_keys = list(
+        assets[["ROW", "RACK"]].drop_duplicates().itertuples(index=False, name=None)
+    )
+    rack_asset_indices = {
+        rack_index: set(
+            assets.index[
+                assets["ROW"].astype(str).eq(str(row))
+                & assets["RACK"].astype(str).eq(str(rack))
+            ].tolist()
+        )
+        for rack_index, (row, rack) in enumerate(rack_keys)
+    }
+    device_actors = {
+        index: plotter.actors[f"_ict_device_{index}"]
+        for index in range(len(assets))
+    }
+    rack_actors = {
+        index: plotter.actors[f"_ict_rack_{index}"]
+        for index in range(len(rack_keys))
+    }
+    device_styles = {
+        index: (actor.prop.color, actor.prop.line_width)
+        for index, actor in device_actors.items()
+    }
+    rack_styles = {
+        index: (actor.prop.color, actor.prop.line_width)
+        for index, actor in rack_actors.items()
+    }
+
+    display_columns = [
+        column
+        for column in assets.columns
+        if str(column).strip().upper() not in {"INDEX", "AIRFLOW DIRECTION", "ROW", "SIZE"}
+    ]
+    header_labels = {
+        "INDEX": "Index",
+        "NAME": "NAME",
+        "RACK": "RACK",
+        "RACK_UNIT": "Unit",
+        "MODELNO": "Model",
+        "POWERLOAD": "Power",
+        "FUNCTION": "Function",
+    }
+    inventory = pn.widgets.Tabulator(
+        assets[display_columns],
+        titles={
+            column: header_labels.get(str(column).strip().upper(), str(column))
+            for column in display_columns
+        },
+        selectable=True,
+        height=350,
+        sizing_mode="stretch_width",
+        row_height=22,
+        stylesheets=[
+            """
+            .tabulator {
+                font-size: 11px;
+            }
+            .tabulator-cell,
+            .tabulator-col-title,
+            .tabulator-header {
+                font-size: 11px;
+            }
+            """
+        ],
+    )
+    vtk_pane = pn.pane.VTK(
+        plotter.ren_win,
+        sizing_mode="stretch_both",
+        min_height=800,
+    )
+    plotly_pane = pn.pane.Plotly(
+        build_data_figure(assets, room_layout_data),
+        config={"responsive": True},
+        sizing_mode="stretch_width",
+        height=500,
+    )
+    selected_asset_indices: set[int] = set()
+
+    def update_selection(asset_indices: set[int], sync_inventory: bool = False) -> None:
+        next_selection = {
+            index for index in asset_indices if 0 <= index < len(assets)
+        }
+        selection_changed = next_selection != selected_asset_indices
+        if selection_changed:
+            selected_asset_indices.clear()
+            selected_asset_indices.update(next_selection)
+            selected_rack_indices = {
+                rack_index
+                for rack_index, rack_indices in rack_asset_indices.items()
+                if selected_asset_indices.intersection(rack_indices)
+            }
+            for index, actor in device_actors.items():
+                base_color, base_width = device_styles[index]
+                selected = index in selected_asset_indices
+                actor.prop.color = "#fff176" if selected else base_color
+                actor.prop.line_width = max(base_width, 2.5) if selected else base_width
+            for index, actor in rack_actors.items():
+                base_color, base_width = rack_styles[index]
+                selected = index in selected_rack_indices
+                actor.prop.color = "#26c6da" if selected else base_color
+                actor.prop.line_width = max(base_width, 4) if selected else base_width
+            plotter.render()
+            vtk_pane.param.trigger("object")
+        if sync_inventory:
+            selection = sorted(selected_asset_indices)
+            if inventory.selection != selection:
+                inventory.selection = selection
+
+    def on_plotly_click(event: object) -> None:
+        click_data = event.new
+        if not isinstance(click_data, Mapping):
+            return
+        points = click_data.get("points", [])
+        if not isinstance(points, list):
+            return
+        for point in points:
+            if not isinstance(point, Mapping):
+                continue
+            custom_data = point.get("customdata")
+            if (
+                not isinstance(custom_data, (list, tuple))
+                or len(custom_data) != 2
+            ):
+                continue
+            category, value = custom_data
+            if category == "ROW":
+                indices = set(
+                    assets.index[assets["ROW"].astype(str).eq(str(value))].tolist()
+                )
+            elif category == "RACK":
+                indices = set(
+                    assets.index[assets["RACK"].astype(str).eq(str(value))].tolist()
+                )
+            else:
+                continue
+            update_selection(indices, sync_inventory=True)
+            return
+
+    def on_inventory_selection(event: object) -> None:
+        update_selection(set(event.new))
+
+    clear_selection = pn.widgets.Button(
+        label="Clear selection",
+        width=130,
+    )
+    clear_selection.on_click(lambda _event: update_selection(set(), sync_inventory=True))
+    plotly_pane.param.watch(on_plotly_click, "click_data")
+    inventory.param.watch(on_inventory_selection, "selection")
+    dashboard = pn.Column(
+        plotly_pane,
+        pn.Row(
+            pn.pane.Markdown("Select a chart bar or inventory row to highlight it in 3D."),
+            clear_selection,
+            sizing_mode="stretch_width",
         ),
+        inventory,
+        sizing_mode="stretch_both",
+        min_height=800,
+    )
+    return pn.Row(
+        vtk_pane,
+        dashboard,
         sizing_mode="stretch_both",
         min_height=800,
     )

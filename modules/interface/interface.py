@@ -197,7 +197,7 @@ def run_interface() -> None:
 	try:
 		dpg.create_context()
 		dpg.configure_app(manual_callback_management=True)
-		with dpg.window(label="ICT Digital Twin", tag="main_window", width=620, height=740):
+		with dpg.window(label="ICT Digital Twin", tag="main_window", width=640, height=720):
 			dpg.add_text("Load the room layout and both data files")
 			dpg.add_separator()
 			dpg.add_button(label="Load room layout YAML", callback=load_room_callback, width=220)
@@ -213,7 +213,7 @@ def run_interface() -> None:
 			dpg.add_button(label="Configuration", callback=lambda: dpg.show_item("config_window"), width=220)
 			dpg.add_text("Select all three files to enable the 3D view.", tag="status_label", wrap=490)
 
-		with dpg.window(label="Configuration", tag="config_window", width=620, height=720, show=False, modal=True):
+		with dpg.window(label="Configuration", tag="config_window", width=640, height=720, show=False, modal=True):
 			with dpg.collapsing_header(label="Files and layout", default_open=True):
 				dpg.add_input_text(
 					label="Output directory",
@@ -265,7 +265,7 @@ def run_interface() -> None:
 
 			dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
 
-		dpg.create_viewport(title="ICT Digital Twin", width=640, height=640)
+		dpg.create_viewport(title="ICT Digital Twin", width=640, height=720)
 		dpg.set_exit_callback(close_viewport)
 		dpg.setup_dearpygui()
 		dpg.show_viewport()

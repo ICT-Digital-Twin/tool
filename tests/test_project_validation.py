@@ -330,18 +330,14 @@ class ProjectValidationTests(unittest.TestCase):
         figure = build_data_figure(asset_data)
 
         self.assertIsInstance(figure, go.Figure)
-        self.assertEqual(len(figure.data), 3)
-        self.assertIsInstance(figure.data[0], go.Table)
-        self.assertEqual(
-            list(figure.data[0].header.values),
-            ["NAME", "ROW", "RACK", "Unit", "Model", "Funct", "Power"],
-        )
-        self.assertEqual(figure.data[0].header.font.size, 10)
-        self.assertEqual(len(figure.data[0].cells.values), len(figure.data[0].header.values))
-        self.assertEqual(figure.data[1].name, "Power load by row")
+        self.assertEqual(len(figure.data), 2)
+        self.assertIsInstance(figure.data[0], go.Bar)
+        self.assertEqual(figure.data[0].name, "Power load by row")
+        self.assertEqual(list(figure.data[0].y), [530])
+        self.assertEqual(list(figure.data[0].customdata), [["ROW", "A"]])
+        self.assertEqual(figure.data[1].name, "Power load by rack")
         self.assertEqual(list(figure.data[1].y), [530])
-        self.assertEqual(figure.data[2].name, "Power load by rack")
-        self.assertEqual(list(figure.data[2].y), [530])
+        self.assertEqual(list(figure.data[1].customdata), [["RACK", "A01"]])
 
     def test_data_figure_includes_row_feed_capacity_reference_line(self):
         from modules.datadisplay import build_data_figure
@@ -361,14 +357,15 @@ class ProjectValidationTests(unittest.TestCase):
 
         figure = build_data_figure(asset_data, room_layout_data)
 
-        self.assertEqual(len(figure.data), 4)
-        self.assertEqual(list(figure.data[1].x), ["A", "B"])
-        self.assertEqual(list(figure.data[1].y), [450, 250])
-        self.assertEqual(figure.data[1].name, "Power load by row")
-        capacity_trace = figure.data[2]
+        self.assertEqual(len(figure.data), 3)
+        self.assertEqual(list(figure.data[0].x), ["A", "B"])
+        self.assertEqual(list(figure.data[0].y), [450, 250])
+        self.assertEqual(figure.data[0].name, "Power load by row")
+        capacity_trace = figure.data[1]
         self.assertEqual(capacity_trace.type, "scatter")
         self.assertEqual(capacity_trace.mode, "lines")
         self.assertEqual(list(capacity_trace.y), [1000, 2000])
+        self.assertEqual(list(figure.data[2].customdata), [["RACK", "A01"], ["RACK", "B01"]])
 
     def test_data_figure_includes_rpdu_capacity_reference_line(self):
         from modules.datadisplay import build_data_figure
@@ -383,20 +380,24 @@ class ProjectValidationTests(unittest.TestCase):
 
         figure = build_data_figure(asset_data, room_layout_data)
 
-        self.assertEqual(len(figure.data), 4)
-        self.assertEqual(figure.data[2].name, "Power load by rack")
+        self.assertEqual(len(figure.data), 3)
+        self.assertEqual(figure.data[1].name, "Power load by rack")
         reference_trace = figure.data[-1]
         self.assertEqual(reference_trace.type, "scatter")
         self.assertEqual(reference_trace.mode, "lines")
         self.assertTrue(all(value == 14000 for value in reference_trace.y))
 
-    def test_data_layout_places_vtk_and_plotly_in_one_panel_row(self):
+    def test_plotly_selection_highlights_matching_devices_and_racks(self):
         from modules.datadisplay import build_data_layout
         from modules.display.display import build_scene
         import panel as pn
 
         asset_data = pd.DataFrame(
-            [{"NAME": "Server A", "ROW": 1, "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1}]
+            [
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1},
+                {"NAME": "Server B", "ROW": "A", "RACK": "A01", "RACK_UNIT": 2, "SIZE": 1},
+                {"NAME": "Server C", "ROW": "B", "RACK": "B01", "RACK_UNIT": 1, "SIZE": 1},
+            ]
         )
         plotter = build_scene(asset_data)
         try:
@@ -404,8 +405,40 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertIsInstance(layout, pn.Row)
             self.assertIn("VTK", type(layout[0]).__name__)
             self.assertIs(layout[0].object, plotter.ren_win)
-            self.assertIsInstance(layout[1], pn.pane.Plotly)
+            self.assertIsInstance(layout[1], pn.Column)
+            plotly_pane = layout[1][0]
+            clear_button = layout[1][1][1]
+            inventory = layout[1][2]
+            self.assertIsInstance(plotly_pane, pn.pane.Plotly)
+            self.assertIsInstance(inventory, pn.widgets.Tabulator)
             self.assertEqual(len(layout.objects), 2)
+
+            plotly_pane.click_data = {"points": [{"customdata": ["ROW", "A"]}]}
+
+            self.assertEqual(plotter.actors["_ict_device_0"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertEqual(plotter.actors["_ict_device_1"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertNotEqual(plotter.actors["_ict_device_2"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertEqual(plotter.actors["_ict_rack_0"].prop.color.hex_rgba[:7], "#26c6da")
+            self.assertEqual(inventory.selection, [0, 1])
+
+            plotly_pane.click_data = {"points": [{"customdata": ["RACK", "B01"]}]}
+
+            self.assertNotEqual(plotter.actors["_ict_device_0"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertEqual(plotter.actors["_ict_device_2"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertEqual(plotter.actors["_ict_rack_1"].prop.color.hex_rgba[:7], "#26c6da")
+            self.assertEqual(inventory.selection, [2])
+
+            inventory.selection = [0]
+
+            self.assertEqual(plotter.actors["_ict_device_0"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertNotEqual(plotter.actors["_ict_device_2"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertEqual(plotter.actors["_ict_rack_0"].prop.color.hex_rgba[:7], "#26c6da")
+
+            clear_button.clicks += 1
+
+            self.assertEqual(inventory.selection, [])
+            self.assertNotEqual(plotter.actors["_ict_device_0"].prop.color.hex_rgba[:7], "#fff176")
+            self.assertNotEqual(plotter.actors["_ict_rack_0"].prop.color.hex_rgba[:7], "#26c6da")
         finally:
             plotter.close()
 

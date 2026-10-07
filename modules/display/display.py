@@ -1,6 +1,4 @@
-"""
-This will display the room and asset data with PyVista.
-"""
+""" This will display the room and asset data with PyVista."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -68,6 +66,7 @@ def build_scene(
         missing = ", ".join(sorted(missing_columns))
         raise ValueError(f"asset_data is missing required columns: {missing}")
 
+    asset_data = asset_data.reset_index(drop=True)
     plotter = pv.Plotter(theme=config.create_pyvista_theme())
 
     function_colors = _function_colors(asset_data)
@@ -125,7 +124,7 @@ def build_scene(
             line_width=config.ROOM_LINE_WIDTH,
         )
 
-    for row, rack in racks:
+    for rack_index, (row, rack) in enumerate(racks):
         x, y = rack_positions[(row, rack)]
         rack_mesh = pv.Box(
             bounds=(
@@ -142,10 +141,11 @@ def build_scene(
             style=config.RACK_RENDER_STYLE,
             color=config.RACK_COLOR,
             line_width=config.RACK_LINE_WIDTH,
+            name=f"_ict_rack_{rack_index}",
         )
 
         rack_assets = asset_data[(asset_data["ROW"] == row) & (asset_data["RACK"] == rack)]
-        for asset in rack_assets.itertuples(index=False):
+        for asset in rack_assets.itertuples(index=True):
             rack_unit = _number(getattr(asset, "RACK_UNIT"), 1.0)
             unit_size = _number(getattr(asset, "SIZE"), 1.0)
             height = unit_size * config.RACK_UNIT_HEIGHT
@@ -168,6 +168,7 @@ def build_scene(
                 ),
                 show_edges=config.SHOW_DEVICE_EDGES,
                 edge_color=config.DEVICE_EDGE_COLOR,
+                name=f"_ict_device_{asset.Index}",
             )
 
     if config.GRID_SHOW_AXIS_LABELS:
