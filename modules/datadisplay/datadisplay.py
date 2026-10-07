@@ -1,6 +1,7 @@
 """Build and serve linked Plotly and PyVista views of asset data."""
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -32,24 +33,34 @@ def _extract_rpdu_capacity(room_layout_data: Mapping[str, object] | None) -> flo
     return capacity if capacity > 0 else None
 
 
-def _extract_feed_capacity(
+def _extract_feed_capacities(
     room_layout_data: Mapping[str, object] | None,
     row: object,
-) -> float | None:
-    """Return the configured feed capacity for a row, if present."""
+) -> dict[str, float]:
+    """Return configured feed capacities for a row, keyed by feed number."""
     if not isinstance(room_layout_data, Mapping):
-        return None
+        return {}
 
     power_data = room_layout_data.get("power", {})
     if not isinstance(power_data, Mapping):
-        return None
+        return {}
 
-    value = power_data.get(f"feed_{str(row).strip().casefold()}_capacity")
-    try:
-        capacity = float(value)
-    except (TypeError, ValueError):
-        return None
-    return capacity if capacity > 0 else None
+    row_name = re.escape(str(row).strip().casefold())
+    key_pattern = re.compile(rf"^feed_{row_name}(\d*)_capacity$", re.IGNORECASE)
+    capacities = {}
+    for key, value in power_data.items():
+        if not isinstance(key, str):
+            continue
+        match = key_pattern.fullmatch(key)
+        if match is None:
+            continue
+        try:
+            capacity = float(value)
+        except (TypeError, ValueError):
+            continue
+        if capacity > 0:
+            capacities[match.group(1)] = capacity
+    return capacities
 
 
 def build_data_figure(
@@ -63,7 +74,7 @@ def build_data_figure(
     row_column = "ROW" if "ROW" in asset_data else None
     rack_column = "RACK" if "RACK" in asset_data else None
     power_column = "POWERLOAD" if "POWERLOAD" in asset_data else None
-    row_title = "Powerload by Row" if row_column and power_column else "Assets by Row"
+    row_title = "Powerload by row" if row_column and power_column else "Assets by Row"
     rack_metric = "Power load" if power_column else "Asset count"
 
     figure = make_subplots(
@@ -95,23 +106,66 @@ def build_data_figure(
             col=1,
         )
         if power_column:
-            row_capacities = [
-                _extract_feed_capacity(room_layout_data, row)
+            row_feed_capacities = [
+                _extract_feed_capacities(room_layout_data, row)
                 for row in row_values.index
             ]
+            row_capacities = [
+                sum(capacities.values()) if capacities else None
+                for capacities in row_feed_capacities
+            ]
             if any(capacity is not None for capacity in row_capacities):
+                has_numbered_feeds = any(
+                    feed_number
+                    for capacities in row_feed_capacities
+                    for feed_number in capacities
+                )
                 figure.add_trace(
                     go.Scatter(
                         x=row_x,
                         y=row_capacities,
                         mode="lines",
                         line={"color": "#b42318", "width": 2, "dash": "dash"},
-                        name="Feed capacity",
-                        hovertemplate="Feed %{x} capacity: %{y}<extra></extra>",
+                        name="Total feed capacity" if has_numbered_feeds else "Feed capacity",
+                        hovertemplate=(
+                            "Total feed capacity for row %{x}: %{y}<extra></extra>"
+                            if has_numbered_feeds
+                            else "Feed %{x} capacity: %{y}<extra></extra>"
+                        ),
                     ),
                     row=1,
                     col=1,
                 )
+                feed_numbers = sorted(
+                    {
+                        feed_number
+                        for capacities in row_feed_capacities
+                        for feed_number in capacities
+                        if feed_number
+                    },
+                    key=int,
+                )
+                for feed_number in feed_numbers:
+                    feed_capacities = [
+                        capacities.get(feed_number)
+                        for capacities in row_feed_capacities
+                    ]
+                    if any(capacity is not None for capacity in feed_capacities):
+                        figure.add_trace(
+                            go.Scatter(
+                                x=row_x,
+                                y=feed_capacities,
+                                mode="lines",
+                                line={"color": "#16803c", "width": 2, "dash": "dot"},
+                                name=f"Feed {feed_number} capacity",
+                                hovertemplate=(
+                                    f"Feed {feed_number} capacity for row "
+                                    "%{x}: %{y}<extra></extra>"
+                                ),
+                            ),
+                            row=1,
+                            col=1,
+                        )
     else:
         figure.add_trace(go.Bar(x=[], y=[]), row=1, col=1)
 

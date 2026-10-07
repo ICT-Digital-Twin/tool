@@ -17,6 +17,18 @@ power:
   feed_b_capacity: Feed capacity in watts
 ```
 
+For multiple feeds serving the same row, put the feed number in the row name.
+The row's total feed capacity is the sum of its feeds.  
+Individual feed capacities are shown as green dotted lines in the row powerload chart.
+
+```yaml
+power:
+  feed_a1_capacity: 40000
+  feed_a2_capacity: 40000
+  feed_b1_capacity: 40000
+  feed_b2_capacity: 40000
+```
+
 ### Asset Data
 
 A CSV file with the following columns:  
@@ -31,6 +43,5 @@ A CSV file with the following columns:
 ```MODELNO  SIZE  POWERLOAD  AIRFLOW  DIRECTION  FUNCTION```
 
 This is the model detail database to provide device charactestics.
-
 
 

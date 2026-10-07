@@ -367,6 +367,39 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(list(capacity_trace.y), [1000, 2000])
         self.assertEqual(list(figure.data[2].customdata), [["RACK", "A01"], ["RACK", "B01"]])
 
+    def test_data_figure_sums_numbered_feed_capacities_and_plots_each_feed(self):
+        from modules.datadisplay import build_data_figure
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "POWERLOAD": 450},
+                {"NAME": "Server B", "ROW": "B", "RACK": "B01", "POWERLOAD": 250},
+            ]
+        )
+        room_layout_data = {
+            "power": {
+                "feed_a1_capacity": 40000,
+                "feed_a2_capacity": 35000,
+                "feed_b1_capacity": 30000,
+                "feed_b2_capacity": 25000,
+            }
+        }
+
+        figure = build_data_figure(asset_data, room_layout_data)
+
+        self.assertEqual(list(figure.data[0].y), [450, 250])
+        total_capacity_trace, first_feed_trace, second_feed_trace = figure.data[1:4]
+        self.assertEqual(total_capacity_trace.name, "Total feed capacity")
+        self.assertEqual(list(total_capacity_trace.y), [75000, 55000])
+        self.assertEqual(first_feed_trace.name, "Feed 1 capacity")
+        self.assertEqual(list(first_feed_trace.y), [40000, 30000])
+        self.assertEqual(first_feed_trace.line.color, "#16803c")
+        self.assertEqual(first_feed_trace.line.dash, "dot")
+        self.assertEqual(second_feed_trace.name, "Feed 2 capacity")
+        self.assertEqual(list(second_feed_trace.y), [35000, 25000])
+        self.assertEqual(second_feed_trace.line.dash, "dot")
+        self.assertEqual(figure.data[4].name, "Power load by rack")
+
     def test_data_figure_includes_rpdu_capacity_reference_line(self):
         from modules.datadisplay import build_data_figure
 

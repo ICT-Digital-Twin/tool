@@ -4,8 +4,12 @@ room:
   height: 2
 
 power:
-  feed_a_capacity: 40000
-  feed_b_capacity: 40000
-  feed_c_capacity: 40000
-  feed_d_capacity: 40000
+  feed_a1_capacity: 20000
+  feed_a2_capacity: 20000
+  feed_b1_capacity: 20000
+  feed_b2_capacity: 20000
+  feed_c1_capacity: 20000
+  feed_c2_capacity: 20000
+  feed_d1_capacity: 20000
+  feed_d2_capacity: 20000
   rpdu_capacity: 14000

@@ -64,10 +64,15 @@ room:
   height: height in metres
 
 power:
-  feed_a_voltage: Feed Voltage in volts
-  feed_a_capacity: Feed capacity in watts
-  feed_b_voltage: Feed Voltage in volts
-  feed_b_capacity: Feed capacity in watts
+  feed_a1_capacity: 20000
+  feed_a2_capacity: 20000
+  feed_b1_capacity: 20000
+  feed_b2_capacity: 20000
+  feed_c1_capacity: 20000
+  feed_c2_capacity: 20000
+  feed_d1_capacity: 20000
+  feed_d2_capacity: 20000
+  rpdu_capacity: 14000
 ```
 
 #### loadassets
