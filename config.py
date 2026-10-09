@@ -7,6 +7,7 @@ PYVISTA_THEME = None
 
 
 OUTPUT_DIR = Path("data/output")
+SNMP_REFRESH_SECONDS = 30
 
 RACK_WIDTH = 0.8
 RACK_DEPTH = 1.0

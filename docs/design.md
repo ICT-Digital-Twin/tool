@@ -83,8 +83,9 @@ Takes a CSV file as an input with the asset database, one device per row, with t
 `SNMP` contains the device hostname used by the SNMP poller. Imported assets
 receive an `SNMP_COMMUNITY` value from the room `name` in the layout YAML.
 
-The SNMP panel polls the local simulator at `127.0.0.1:1161` every 30 seconds
-while the SNMP view is open, and stops polling when the Asset data view is
+The SNMP panel polls the local simulator at `127.0.0.1:1161` immediately when
+the SNMP view is selected, then every `SNMP_REFRESH_SECONDS` seconds (30 by
+default, configured in `config.py`). Polling stops when the Asset data view is
 selected. The poll button can request an immediate update. It uses SNMP v2c,
 each asset's `SNMP` name, lowercased, and the room name as the community string
 prefix (for example, `DemoColo-01/tora01a`). The PyVista view uses green for

@@ -1029,6 +1029,7 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertIsInstance(layout[4], pn.pane.Plotly)
 
     def test_snmp_view_updates_device_colors_legend_and_polling_state(self):
+        import config
         import panel as pn
 
         from modules.datadisplay import datadisplay
@@ -1075,7 +1076,7 @@ class ProjectValidationTests(unittest.TestCase):
                 return_value=periodic_callback,
             ) as add_periodic_callback, patch(
                 "modules.snmpdisplay.snmpdisplay.threading.Thread"
-            ), patch.object(
+            ) as thread, patch.object(
                 datadisplay,
                 "build_snmp_layout",
                 wraps=datadisplay.build_snmp_layout,
@@ -1091,8 +1092,12 @@ class ProjectValidationTests(unittest.TestCase):
 
                 self.assertEqual(
                     add_periodic_callback.call_args.kwargs,
-                    {"period": 30_000, "start": False},
+                    {
+                        "period": config.SNMP_REFRESH_SECONDS * 1000,
+                        "start": False,
+                    },
                 )
+                thread.return_value.start.assert_called_once()
                 build_snmp_layout.call_args.kwargs["on_results"]([
                     {"Status": "OK"},
                     {"Status": "Warning"},

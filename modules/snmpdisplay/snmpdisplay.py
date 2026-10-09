@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 import threading
 
+import config
 import pandas as pd
 import panel as pn
 from panel.io.callbacks import PeriodicCallback
@@ -214,7 +215,8 @@ def build_snmp_layout(
     history: list[dict[str, object]] = []
     polling = {"active": False}
     status = pn.pane.Alert(
-        "SNMP devices are polled every 30 seconds while this view is open. "
+        f"SNMP devices are polled every {config.SNMP_REFRESH_SECONDS} seconds "
+        "while this view is open. "
         "You can also poll immediately using the button.",
         alert_type="info",
         sizing_mode="stretch_width",
@@ -315,7 +317,7 @@ def build_snmp_layout(
             if periodic_callback is None:
                 periodic_callback = pn.state.add_periodic_callback(
                     on_poll,
-                    period=30_000,
+                    period=config.SNMP_REFRESH_SECONDS * 1000,
                     start=False,
                 )
             periodic_callback.start()
