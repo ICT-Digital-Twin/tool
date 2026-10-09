@@ -323,7 +323,8 @@ class ProjectValidationTests(unittest.TestCase):
                 ["_ict_rack_label_0", "_ict_rack_label_1", "_ict_rack_label_2"],
             )
             layout = build_data_layout(asset_data, plotter)
-            self.assertIs(layout[0].object, plotter.ren_win)
+            self.assertIs(layout[0][0].object, plotter.ren_win)
+            self.assertEqual(layout[0][1].styles["position"], "absolute")
             self.assertIsNotNone(layout[0].get_root(Document()))
         finally:
             plotter.close()
@@ -418,6 +419,42 @@ class ProjectValidationTests(unittest.TestCase):
             device_colors = mesh_colors[1:]
             self.assertEqual(device_colors[0], device_colors[2])
             self.assertNotEqual(device_colors[0], device_colors[1])
+        finally:
+            plotter.close()
+
+    def test_build_data_layout_adds_fixed_legend_for_used_function_colors(self):
+        import config
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "ASSET-001", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 1, "SIZE": 1, "FUNCTION": "Compute"},
+                {"NAME": "ASSET-002", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 2, "SIZE": 1, "FUNCTION": "Storage"},
+                {"NAME": "ASSET-003", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 3, "SIZE": 1, "FUNCTION": "Compute"},
+                {"NAME": "ASSET-004", "ROW": 1, "RACK": "RACK-01", "RACK_UNIT": 4, "SIZE": 1, "FUNCTION": None},
+            ]
+        )
+
+        from modules.datadisplay import build_data_layout
+        from modules.display.display import build_scene
+
+        plotter = build_scene(asset_data)
+
+        try:
+            layout = build_data_layout(asset_data, plotter)
+            legend_html = layout[0][1].object
+
+            self.assertIn(config.FUNCTION_COLORS["Compute"], legend_html)
+            self.assertIn(config.FUNCTION_COLORS["Storage"], legend_html)
+            self.assertIn(config.DEVICE_COLOR, legend_html)
+            self.assertIn("Compute", legend_html)
+            self.assertIn("Storage", legend_html)
+            self.assertIn("Unspecified", legend_html)
+            self.assertNotIn("Network", legend_html)
+            self.assertNotIn("Other", legend_html)
+            self.assertEqual(layout[0][1].styles["position"], "absolute")
+            self.assertEqual(layout[0][1].styles["left"], "12px")
+            self.assertEqual(layout[0][1].styles["bottom"], "48px")
+            self.assertIn("background:transparent", legend_html)
         finally:
             plotter.close()
 
