@@ -292,7 +292,7 @@ class ProjectValidationTests(unittest.TestCase):
         plotter = build_scene(asset_data)
         try:
             layout = build_data_layout(asset_data, plotter)
-            inventory = layout[1].objects[1].objects[0].objects[3]
+            inventory = layout[1].objects[1].objects[0].objects[2]
             self.assertNotIn("SNMP_COMMUNITY", inventory.value.columns)
         finally:
             plotter.close()
@@ -919,8 +919,8 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertEqual(feed_2.styles["color"], "#d62728")
             right_panel_selector.value = "snmp"
             self.assertEqual(
-                right_panel_content[0][1].object.layout.title.text,
-                "SNMP Feed Data",
+                right_panel_content[0][4].object.layout.title.text,
+                "SNMP System Uptime",
             )
             right_panel_selector.value = "assets"
             self.assertIs(right_panel_content[0], asset_dashboard)
@@ -980,21 +980,207 @@ class ProjectValidationTests(unittest.TestCase):
         finally:
             plotter.close()
 
-    def test_snmpdisplay_builds_plotly_placeholder(self):
+    def test_snmpdisplay_builds_uptime_chart_and_poll_panel(self):
+        from datetime import datetime, timezone
+
         import panel as pn
         import plotly.graph_objects as go
 
         from modules.snmpdisplay import build_snmp_figure, build_snmp_layout
 
-        figure = build_snmp_figure()
-        layout = build_snmp_layout()
+        timestamp = datetime(2026, 10, 9, tzinfo=timezone.utc)
+        figure = build_snmp_figure([
+            {
+                "Host": "server-01",
+                "Timestamp": timestamp,
+                "Uptime (seconds)": 120,
+                "Status": "OK",
+            },
+            {
+                "Host": "server-02",
+                "Timestamp": timestamp,
+                "Uptime (seconds)": None,
+                "Status": "timeout",
+            },
+        ])
+        layout = build_snmp_layout(pd.DataFrame([
+            {"SNMP": "server-01", "SNMP_COMMUNITY": "SampleColo-01"},
+        ]))
 
         self.assertIsInstance(figure, go.Figure)
-        self.assertEqual(figure.layout.title.text, "SNMP Feed Data")
-        self.assertEqual(figure.data[0].name, "SNMP feed")
-        self.assertEqual(figure.layout.annotations[0].text, "SNMP polling is not connected yet")
+        self.assertEqual(figure.layout.title.text, "SNMP System Uptime")
+        self.assertEqual(figure.data[0].name, "server-01")
+        self.assertEqual(list(figure.data[0].y), [120])
+        self.assertEqual(figure.layout.yaxis.title.text, "Uptime (seconds)")
         self.assertIsInstance(layout, pn.Column)
-        self.assertIsInstance(layout[1], pn.pane.Plotly)
+        self.assertEqual(layout[2].label, "Poll SNMP devices")
+        self.assertFalse(layout[2].disabled)
+        self.assertIsInstance(layout[3], pn.widgets.Tabulator)
+        self.assertIsInstance(layout[4], pn.pane.Plotly)
+
+    def test_snmp_view_updates_device_colors_legend_and_polling_state(self):
+        import panel as pn
+
+        from modules.datadisplay import datadisplay
+        from modules.display.display import build_scene
+
+        asset_data = pd.DataFrame([
+            {
+                "NAME": "Server A",
+                "ROW": "A",
+                "RACK": "A01",
+                "RACK_UNIT": 1,
+                "SIZE": 1,
+                "FUNCTION": "Compute",
+                "SNMP": "server-a",
+                "SNMP_COMMUNITY": "SampleColo",
+            },
+            {
+                "NAME": "Server B",
+                "ROW": "A",
+                "RACK": "A01",
+                "RACK_UNIT": 2,
+                "SIZE": 1,
+                "FUNCTION": "Storage",
+                "SNMP": "server-b",
+                "SNMP_COMMUNITY": "SampleColo",
+            },
+            {
+                "NAME": "Server C",
+                "ROW": "A",
+                "RACK": "A01",
+                "RACK_UNIT": 3,
+                "SIZE": 1,
+                "FUNCTION": "Network",
+                "SNMP": "server-c",
+                "SNMP_COMMUNITY": "SampleColo",
+            },
+        ])
+        plotter = build_scene(asset_data)
+        periodic_callback = MagicMock()
+        try:
+            with patch.object(
+                pn.state,
+                "add_periodic_callback",
+                return_value=periodic_callback,
+            ) as add_periodic_callback, patch(
+                "modules.snmpdisplay.snmpdisplay.threading.Thread"
+            ), patch.object(
+                datadisplay,
+                "build_snmp_layout",
+                wraps=datadisplay.build_snmp_layout,
+            ) as build_snmp_layout:
+                layout = datadisplay.build_data_layout(asset_data, plotter)
+                device_colors = [
+                    plotter.actors[f"_ict_device_{index}"].prop.color.hex_rgba[:7]
+                    for index in range(3)
+                ]
+                legend = layout[0][1]
+                selector = layout[1][0]
+                selector.value = "snmp"
+
+                self.assertEqual(
+                    add_periodic_callback.call_args.kwargs,
+                    {"period": 30_000, "start": False},
+                )
+                build_snmp_layout.call_args.kwargs["on_results"]([
+                    {"Status": "OK"},
+                    {"Status": "Warning"},
+                    {"Status": "timeout"},
+                ])
+                self.assertEqual(
+                    [
+                        plotter.actors[f"_ict_device_{index}"].prop.color.hex_rgba[:7]
+                        for index in range(3)
+                    ],
+                    ["#008000", "#ffff00", "#ff0000"],
+                )
+                self.assertIn("Error", legend.object)
+                self.assertIn("Warning", legend.object)
+                self.assertIn("Ok", legend.object)
+                self.assertIn("#ff0000", legend.object)
+                self.assertIn("#ffff00", legend.object)
+                self.assertIn("#008000", legend.object)
+                periodic_callback.start.assert_called_once()
+
+                selector.value = "assets"
+
+                self.assertEqual(
+                    [
+                        plotter.actors[f"_ict_device_{index}"].prop.color.hex_rgba[:7]
+                        for index in range(3)
+                    ],
+                    device_colors,
+                )
+                self.assertNotIn("Warning", legend.object)
+                periodic_callback.stop.assert_called_once()
+        finally:
+            plotter.close()
+
+    def test_snmp_poll_uses_asset_snmp_column_as_hostname(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from modules.snmpdisplay import poll_snmp_assets
+
+        engine = MagicMock()
+        target = object()
+        description = MagicMock()
+        description.prettyPrint.return_value = "Test device"
+        uptime = MagicMock()
+        uptime.prettyPrint.return_value = "12345"
+        uptime.__int__.return_value = 12345
+        system_name = MagicMock()
+        system_name.prettyPrint.return_value = "test-device"
+        response = [
+            ("sysDescr.0", description),
+            ("sysUpTime.0", uptime),
+            ("sysName.0", system_name),
+            ("serial.0", MagicMock(prettyPrint=MagicMock(return_value="FNS1234"))),
+        ]
+        with patch(
+            "modules.snmpdisplay.snmpdisplay.SnmpEngine",
+            return_value=engine,
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.UdpTransportTarget.create",
+            new_callable=AsyncMock,
+            return_value=target,
+        ) as create_target, patch(
+            "modules.snmpdisplay.snmpdisplay.get_cmd",
+            new_callable=AsyncMock,
+            return_value=(None, 0, 0, response),
+        ) as get_cmd:
+            rows = asyncio.run(
+                poll_snmp_assets(pd.DataFrame([{
+                    "NAME": "display label",
+                    "SNMP": "Server-01.example.test",
+                    "SNMP_COMMUNITY": "SampleColo-01",
+                }]))
+            )
+
+        create_target.assert_awaited_once_with(
+            ("127.0.0.1", 1161),
+            timeout=2,
+            retries=0,
+        )
+        self.assertEqual(
+            get_cmd.await_args.args[1].communityName,
+            "SampleColo-01/server-01.example.test",
+        )
+        self.assertEqual(rows[0]["Host"], "Server-01.example.test")
+        self.assertEqual(rows[0]["System name"], "test-device")
+        self.assertEqual(rows[0]["Description"], "Test device")
+        self.assertEqual(rows[0]["Serial"], "FNS1234")
+        self.assertEqual(rows[0]["Uptime (seconds)"], 123.45)
+        self.assertEqual(rows[0]["Status"], "OK")
+        self.assertEqual(len(get_cmd.await_args.args[4:]), 4)
+        from modules.snmpdisplay.snmpdisplay import _serial_oid_for_device
+
+        self.assertEqual(
+            _serial_oid_for_device("server-01.example.test"),
+            "1.3.6.1.4.1.674.10892.5.4.300.10.1.8.1",
+        )
+        engine.close_dispatcher.assert_called_once_with()
 
     def test_display_data_serves_combined_layout_in_browser(self):
         from modules.datadisplay import datadisplay

@@ -7,7 +7,7 @@ Install the packages listed in `requirements.txt`, then run:
 python main.py
 ```
 
-The application opens in your default browser. Upload the room YAML, asset CSV, and model-details CSV on the main page; the configuration controls and combined 3D and inventory views are available there. Use the selector above the right-hand panel to switch between asset data and the SNMP chart template. The SNMP panel is a placeholder and does not connect to or poll SNMP devices yet.
+The application opens in your default browser. Upload the room YAML, asset CSV, and model-details CSV on the main page; the configuration controls and combined 3D and inventory views are available there. Use the selector above the right-hand panel to switch between asset data and SNMP system data. While the SNMP view is open, it polls the local SNMP simulator every 30 seconds; polling stops when you return to Asset data. The left-hand PyVista view then colors devices by SNMP status: `OK` is green, an explicit `Warning` is yellow, and other statuses are red. It restores the asset-function colors when you switch back. The SNMP panel polls `127.0.0.1:1161` using SNMP v2c. It uses each asset's `SNMP` name (lowercased) as the simulator context suffix and the room's YAML `name` as the community prefix, queries `sysDescr`, `sysUpTime`, and `sysName`, and requests the vendor-specific serial OID used by `sweep.py`. Use the poll button to request an immediate update.
 
 ## Input file requirements
 ### Room Layout (YAML)
@@ -46,9 +46,9 @@ power:
 A CSV file with the following columns:  
 ```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO  SNMP```
 
-This is the asset database arranged into ROWs and RACKs. `SNMP` is the
-device's SNMP context selector ID. The imported asset data also includes
-`SNMP_COMMUNITY`, populated from the room's `name` in the YAML file.
+This is the asset database arranged into ROWs and RACKs. `SNMP` must contain
+the device's resolvable hostname for SNMP polling. The imported asset data also
+includes `SNMP_COMMUNITY`, populated from the room's `name` in the YAML file.
 
 
 ### Asset details

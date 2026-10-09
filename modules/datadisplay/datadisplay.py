@@ -28,6 +28,22 @@ VTK_INTERACTION_URL = "/ict-digital-twin/z_up_interaction.js"
 def _build_function_legend_html(asset_data: pd.DataFrame) -> str:
     """Build a compact HTML legend for the function colors used by the devices."""
     entries = function_legend_entries(asset_data, _function_colors(asset_data))
+    return _build_legend_html(entries)
+
+
+def _build_status_legend_html() -> str:
+    """Build the SNMP health legend."""
+    return _build_legend_html(
+        [
+            ("Error", "#ff0000"),
+            ("Warning", "#ffff00"),
+            ("Ok", "#008000"),
+        ]
+    )
+
+
+def _build_legend_html(entries: list[tuple[str, str]]) -> str:
+    """Build a compact HTML legend from labels and colors."""
     if not entries:
         return ""
 
@@ -443,6 +459,8 @@ def build_data_layout(
         index: (actor.prop.color, actor.prop.line_width)
         for index, actor in device_actors.items()
     }
+    snmp_device_colors: dict[int, str] = {}
+    snmp_mode_active = False
     rack_styles = {
         index: (actor.prop.color, actor.prop.line_width)
         for index, actor in rack_actors.items()
@@ -491,18 +509,19 @@ def build_data_layout(
         sizing_mode="stretch_both",
         min_height=800,
     )
+    legend_pane = pn.pane.HTML(
+        _build_function_legend_html(assets),
+        styles={
+            "position": "absolute",
+            "left": "12px",
+            "bottom": "48px",
+            "z-index": "10",
+        },
+        margin=0,
+    )
     vtk_view = pn.Column(
         vtk_pane,
-        pn.pane.HTML(
-            _build_function_legend_html(assets),
-            styles={
-                "position": "absolute",
-                "left": "12px",
-                "bottom": "48px",
-                "z-index": "10",
-            },
-            margin=0,
-        ),
+        legend_pane,
         sizing_mode="stretch_both",
         min_height=800,
         styles={"position": "relative", "flex": "1.2 1 0px", "min-width": "0"},
@@ -564,6 +583,46 @@ def build_data_layout(
     )
     selected_asset_indices: set[int] = set()
 
+    def apply_device_colors() -> None:
+        for index, actor in device_actors.items():
+            base_color, _ = device_styles[index]
+            if index in selected_asset_indices:
+                actor.prop.color = "#fff176"
+            elif snmp_mode_active:
+                actor.prop.color = snmp_device_colors.get(index, base_color)
+            else:
+                actor.prop.color = base_color
+
+    def update_snmp_colors(rows: list[dict[str, object]]) -> None:
+        snmp_device_colors.clear()
+        for index in device_actors:
+            row = rows[index] if index < len(rows) else {}
+            status = row.get("Status")
+            if isinstance(status, str) and status.strip().casefold() == "ok":
+                color = "#008000"
+            elif isinstance(status, str) and status.strip().casefold() == "warning":
+                color = "#ffff00"
+            else:
+                color = "#ff0000"
+            snmp_device_colors[index] = color
+
+        if snmp_mode_active:
+            apply_device_colors()
+            plotter.render()
+            vtk_pane.param.trigger("object")
+
+    def set_snmp_mode(active: bool) -> None:
+        nonlocal snmp_mode_active
+        snmp_mode_active = active
+        legend_pane.object = (
+            _build_status_legend_html()
+            if active
+            else _build_function_legend_html(assets)
+        )
+        apply_device_colors()
+        plotter.render()
+        vtk_pane.param.trigger("object")
+
     def update_selection(asset_indices: set[int], sync_inventory: bool = False) -> None:
         next_selection = {
             index for index in asset_indices if 0 <= index < len(assets)
@@ -578,10 +637,10 @@ def build_data_layout(
                 if selected_asset_indices.intersection(rack_indices)
             }
             for index, actor in device_actors.items():
-                base_color, base_width = device_styles[index]
+                _, base_width = device_styles[index]
                 selected = index in selected_asset_indices
-                actor.prop.color = "#fff176" if selected else base_color
                 actor.prop.line_width = max(base_width, 2.5) if selected else base_width
+            apply_device_colors()
             for index, actor in rack_actors.items():
                 base_color, base_width = rack_styles[index]
                 selected = index in selected_rack_indices
@@ -679,12 +738,15 @@ def build_data_layout(
         value="assets",
         width=180,
     )
-    snmp_panel = build_snmp_layout()
+    snmp_panel = build_snmp_layout(assets, on_results=update_snmp_colors)
 
     def select_right_panel(event: object) -> None:
+        is_snmp = event.new == "snmp"
         right_panel_content.objects = (
-            [snmp_panel] if event.new == "snmp" else [dashboard]
+            [snmp_panel] if is_snmp else [dashboard]
         )
+        set_snmp_mode(is_snmp)
+        snmp_panel.visible = is_snmp
 
     right_panel_selector.param.watch(select_right_panel, "value")
     right_panel = pn.Column(

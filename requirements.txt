@@ -4,4 +4,4 @@ PyYAML
 pandas
 plotly
 panel
-
+pysnmp>=7.1

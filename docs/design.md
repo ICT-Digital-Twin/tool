@@ -80,8 +80,19 @@ power:
 Takes a CSV file as an input with the asset database, one device per row, with the following headers:  
 ```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO  SNMP```
 
-`SNMP` contains the device's SNMP context selector ID. Imported assets receive
-an `SNMP_COMMUNITY` value from the room `name` in the layout YAML.
+`SNMP` contains the device hostname used by the SNMP poller. Imported assets
+receive an `SNMP_COMMUNITY` value from the room `name` in the layout YAML.
+
+The SNMP panel polls the local simulator at `127.0.0.1:1161` every 30 seconds
+while the SNMP view is open, and stops polling when the Asset data view is
+selected. The poll button can request an immediate update. It uses SNMP v2c,
+each asset's `SNMP` name, lowercased, and the room name as the community string
+prefix (for example, `DemoColo-01/tora01a`). The PyVista view uses green for
+successful (`OK`) polls, yellow for an explicit `Warning` status, and red for
+other statuses; switching back to Asset data restores the asset-function
+colors. It queries
+`sysDescr`, `sysUpTime`, and `sysName`, plus the vendor-specific serial OID
+selected by the device-name prefix, matching `sweep.py`.
 
 ### Display
 
