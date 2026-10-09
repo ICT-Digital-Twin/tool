@@ -3,22 +3,22 @@ INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
 2,Compute Node 02,A,A01,2,R670
 3,Compute Node 03,A,A01,3,R670
 4,Compute Node 04,A,A01,4,R670
-5,Compute Node 01,A,A01,9,R670
-6,Compute Node 02,A,A01,10,R670
-7,Compute Node 03,A,A01,11,R670
-8,Compute Node 04,A,A01,12,R670
+5,Compute Node 05,A,A01,9,R670
+6,Compute Node 06,A,A01,10,R670
+7,Compute Node 07,A,A01,11,R670
+8,Compute Node 08,A,A01,12,R670
 9,TOR A01A,A,A01,41,C93180
 10,TOR A01B,A,A01,42,C93180
 11,Virtualisation Cluster 01,A,A02,1,R770
 12,Virtualisation Cluster 02,A,A02,3,R770
 13,Virtualisation Cluster 03,A,A02,5,R770
-14,Virtualisation Cluster 01,A,A02,11,R770
-15,Virtualisation Cluster 02,A,A02,13,R770
-16,Virtualisation Cluster 03,A,A02,15,R770
+14,Virtualisation Cluster 04,A,A02,11,R770
+15,Virtualisation Cluster 05,A,A02,13,R770
+16,Virtualisation Cluster 06,A,A02,15,R770
 17,TOR A02A,A,A02,41,C93180
 18,TOR A02B,A,A02,42,C93180
-19,Virtualisation Cluster 04,A,A03,1,R770
-20,Virtualisation Cluster 05,A,A03,3,R770
+19,Virtualisation Cluster 07,A,A03,1,R770
+20,Virtualisation Cluster 08,A,A03,3,R770
 21,Database Server 01,A,A03,5,R770
 22,TOR A03A,A,A03,41,C93180
 23,TOR A03B,A,A03,42,C93180
@@ -31,15 +31,15 @@ INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
 30,AI Training Node 02,A,A05,7,XE9680
 31,TOR A05A,A,A05,41,C93180
 32,TOR A05B,A,A05,42,C93180
-33,Compute Node 05,B,B01,1,R670
-34,Compute Node 06,B,B01,2,R670
-35,Compute Node 07,B,B01,3,R670
-36,Compute Node 08,B,B01,4,R670
+33,Compute Node 09,B,B01,1,R670
+34,Compute Node 10,B,B01,2,R670
+35,Compute Node 11,B,B01,3,R670
+36,Compute Node 12,B,B01,4,R670
 37,TOR B01A,B,B01,41,C93180
 38,TOR B01B,B,B01,42,C93180
-39,Virtualisation Cluster 06,B,B02,1,R770
-40,Virtualisation Cluster 07,B,B02,3,R770
-41,Virtualisation Cluster 08,B,B02,5,R770
+39,Virtualisation Cluster 09,B,B02,1,R770
+40,Virtualisation Cluster 10,B,B02,3,R770
+41,Virtualisation Cluster 11,B,B02,5,R770
 42,TOR B02A,B,B02,41,C93180
 43,TOR B02B,B,B02,42,C93180
 44,Kubernetes Node 01,B,B03,1,R770
@@ -48,8 +48,8 @@ INDEX,NAME,ROW,RACK,RACK_UNIT,MODELNO
 47,TOR B03A,B,B03,41,C93180
 48,TOR B03B,B,B03,42,C93180
 49,Backup Server 01,B,B04,1,R770
-50,Monitoring Server 01,B,B04,3,R770
-51,Management Server 01,B,B04,5,R770
+50,Mon Server 01,B,B04,3,R770
+51,Mgmt Server 01,B,B04,5,R770
 52,TOR B04A,B,B04,41,C93180
 53,TOR B04B,B,B04,42,C93180
 54,SAN Controller A,B,B05,1,PowerStore Elite
