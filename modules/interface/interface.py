@@ -45,6 +45,7 @@ def create_main_layout() -> pn.Column:
 		"room_layout": None,
 		"asset_data": None,
 		"plotter": None,
+		"asset_confirmation": None,
 	}
 	status = pn.pane.Alert(
 		"Upload the room layout and both CSV files to build the digital twin.",
@@ -52,20 +53,54 @@ def create_main_layout() -> pn.Column:
 		sizing_mode="stretch_width",
 	)
 	visualization = pn.Column(
-		pn.pane.Markdown("### Visualization\nThe 3D view and inventory dashboard will appear here."),
+		visible=False,
 		sizing_mode="stretch_width",
 	)
+	title = pn.pane.Markdown("# Digital Twin")
+
+	def format_room_title(room_layout: object) -> str:
+		if not isinstance(room_layout, Mapping):
+			return "Digital Twin"
+		room = room_layout.get("room")
+		if isinstance(room, Mapping):
+			room_name = room.get("name") or room.get("room_name")
+		else:
+			room_name = room_layout.get("room_name") or room_layout.get("name")
+		if not isinstance(room_name, str):
+			return "Digital Twin"
+		room_name = room_name.strip()
+		return f"{room_name} Digital Twin" if room_name else "Digital Twin"
+
+	def set_title(room_layout: object) -> None:
+		title.object = f"# {format_room_title(room_layout)}"
 
 	def set_status(message: str, alert_type: str = "info") -> None:
+		state["asset_confirmation"] = None
 		status.object = message
 		status.alert_type = alert_type
+		status.visible = True
 
-	def clear_visualization(message: str) -> None:
+	def dismiss_asset_confirmation(message: str) -> None:
+		if state["asset_confirmation"] == message:
+			state["asset_confirmation"] = None
+			status.visible = False
+
+	def update_configuration_visibility() -> None:
+		files_loaded = (
+			isinstance(state["room_layout"], Mapping)
+			and isinstance(state["asset_data"], pd.DataFrame)
+		)
+		configuration_section.visible = not files_loaded
+		input_files_section.visible = not files_loaded
+
+	def clear_visualization() -> None:
 		plotter = state["plotter"]
 		if plotter is not None:
 			plotter.close()
 			state["plotter"] = None
-		visualization.objects = [pn.pane.Markdown(message)]
+		set_title(state["room_layout"])
+		visualization.objects = []
+		visualization.visible = False
 
 	def render_scene() -> None:
 		asset_data = state["asset_data"]
@@ -79,11 +114,17 @@ def create_main_layout() -> pn.Column:
 		except Exception as error:
 			if new_plotter is not None:
 				new_plotter.close()
+			visualization.objects = []
+			visualization.visible = False
 			set_status(f"Could not build the visualization: {error}", "danger")
 			return
 		previous_plotter = state["plotter"]
 		state["plotter"] = new_plotter
 		visualization.objects = [data_layout]
+		visualization.visible = True
+		confirmation = state["asset_confirmation"]
+		if isinstance(confirmation, str):
+			dismiss_asset_confirmation(confirmation)
 		if previous_plotter is not None:
 			previous_plotter.close()
 
@@ -113,7 +154,9 @@ def create_main_layout() -> pn.Column:
 	def load_room(event: object) -> None:
 		if not event.new:
 			state["room_layout"] = None
-			clear_visualization("Upload all three files to show the visualization.")
+			update_configuration_visibility()
+			set_title(state["room_layout"])
+			clear_visualization()
 			return
 		try:
 			room_layout = loadroom(event.new)
@@ -121,17 +164,22 @@ def create_main_layout() -> pn.Column:
 				raise ValueError("The selected YAML file must contain a mapping.")
 		except Exception as error:
 			state["room_layout"] = None
-			clear_visualization("Upload all three files to show the visualization.")
+			update_configuration_visibility()
+			set_title(state["room_layout"])
+			clear_visualization()
 			set_status(f"Could not load room layout: {error}", "danger")
 			return
 		state["room_layout"] = room_layout
+		update_configuration_visibility()
+		set_title(room_layout)
 		set_status(f"Loaded room layout: {room_upload.filename}", "success")
 		render_scene()
 
 	def load_assets(_event: object) -> None:
 		if not asset_upload.value or not model_upload.value:
 			state["asset_data"] = None
-			clear_visualization("Upload all three files to show the visualization.")
+			update_configuration_visibility()
+			clear_visualization()
 			if asset_upload.value:
 				set_status("Asset CSV loaded. Add the model-details CSV to continue.")
 			return
@@ -141,15 +189,26 @@ def create_main_layout() -> pn.Column:
 				raise ValueError("Asset data was not loaded.")
 		except Exception as error:
 			state["asset_data"] = None
-			clear_visualization("Upload all three files to show the visualization.")
+			update_configuration_visibility()
+			clear_visualization()
 			set_status(f"Could not load asset data: {error}", "danger")
 			return
 		state["asset_data"] = asset_data
+		update_configuration_visibility()
 		validation = asset_schema_validation_message(asset_data)
-		set_status(
-			f"Loaded {len(asset_data)} assets from {asset_upload.filename} and {model_upload.filename}. {validation}",
-			"success" if validation.endswith("PASSED") else "warning",
+		message = (
+			f"Loaded {len(asset_data)} assets from {asset_upload.filename} and {model_upload.filename}. "
+			f"{validation}"
 		)
+		alert_type = "success" if validation.endswith("PASSED") else "warning"
+		set_status(message, alert_type)
+		if alert_type == "success":
+			state["asset_confirmation"] = message
+			pn.state.add_periodic_callback(
+				lambda: dismiss_asset_confirmation(message),
+				period=5000,
+				count=1,
+			)
 		render_scene()
 
 	room_upload.param.watch(load_room, "value")
@@ -228,20 +287,28 @@ def create_main_layout() -> pn.Column:
 	color_controls.append(show_device_edges)
 
 	configuration = pn.Accordion(
-		("Files and layout", pn.Column(*layout_controls, sizing_mode="stretch_width")),
+		("Options", pn.Column(*layout_controls, sizing_mode="stretch_width")),
 		("Colors", pn.Column(*color_controls, sizing_mode="stretch_width")),
 		active=[],
 		sizing_mode="stretch_width",
 	)
-	uploads = pn.Row(room_upload, asset_upload, model_upload, sizing_mode="stretch_width")
-	return pn.Column(
-		pn.pane.Markdown("# ICT Digital Twin\nRoom layout and equipment configuration"),
-		pn.pane.Markdown("## Input files"),
-		uploads,
-		status,
-		visualization,
+	configuration_section = pn.Column(
 		pn.pane.Markdown("## Configuration"),
 		configuration,
+		sizing_mode="stretch_width",
+	)
+	uploads = pn.Row(room_upload, asset_upload, model_upload, sizing_mode="stretch_width")
+	input_files_section = pn.Column(
+		pn.pane.Markdown("## Input files"),
+		uploads,
+		sizing_mode="stretch_width",
+	)
+	return pn.Column(
+		title,
+		configuration_section,
+		input_files_section,
+		status,
+		visualization,
 		sizing_mode="stretch_width",
 	)
 

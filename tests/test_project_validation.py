@@ -164,30 +164,98 @@ class ProjectValidationTests(unittest.TestCase):
 
         self.assertIsInstance(page, pn.Column)
         self.assertEqual(len(page.select(pn.widgets.FileInput)), 3)
+        input_files_section = page.objects[2]
+        visualization = page.objects[4]
+        self.assertIsInstance(input_files_section, pn.Column)
+        self.assertEqual(input_files_section.objects[0].object, "## Input files")
+        self.assertTrue(input_files_section.visible)
+        self.assertFalse(visualization.visible)
+        self.assertEqual(visualization.objects, [])
 
-    def test_configuration_follows_visualization_and_starts_collapsed(self):
+    def test_configuration_is_at_the_top_and_starts_collapsed(self):
         import panel as pn
 
         from modules.interface.interface import create_main_layout
 
         page = create_main_layout()
-        configuration_heading_index = next(
-            index
-            for index, item in enumerate(page.objects)
-            if isinstance(item, pn.pane.Markdown) and item.object == "## Configuration"
-        )
-        visualization_index = next(
-            index
-            for index, item in enumerate(page.objects)
-            if isinstance(item, pn.Column)
-            and item.objects
-            and isinstance(item.objects[0], pn.pane.Markdown)
-            and item.objects[0].object.startswith("### Visualization")
-        )
-        accordion = next(item for item in page.objects if isinstance(item, pn.Accordion))
+        configuration_section = page.objects[1]
+        accordion = page.select(pn.Accordion)[0]
 
-        self.assertLess(visualization_index, configuration_heading_index)
+        self.assertIsInstance(configuration_section, pn.Column)
+        self.assertEqual(configuration_section.objects[0].object, "## Configuration")
+        self.assertTrue(configuration_section.visible)
         self.assertEqual(accordion.active, [])
+
+    def test_configuration_hides_after_files_are_loaded_and_returns_when_cleared(self):
+        import panel as pn
+
+        from modules.interface.interface import create_main_layout
+
+        with patch("modules.interface.interface.loadroom", return_value={"room": {}}), patch(
+            "modules.interface.interface.loadassets",
+            return_value=pd.DataFrame(columns=[
+                "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+                "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION",
+            ]),
+        ), patch("modules.interface.interface.build_scene", return_value=MagicMock(close=MagicMock())), patch(
+            "modules.interface.interface.build_data_layout",
+            return_value=MagicMock(),
+        ), patch("modules.interface.interface.pn.state.add_periodic_callback") as add_timeout:
+            page = create_main_layout()
+            configuration_section = page.objects[1]
+            input_files_section = page.objects[2]
+            status = page.objects[3]
+            uploads = page.select(pn.widgets.FileInput)
+            room_upload, asset_upload, model_upload = uploads
+
+            self.assertTrue(input_files_section.visible)
+            room_upload.value = b"room"
+            asset_upload.value = b"assets"
+            self.assertTrue(configuration_section.visible)
+            self.assertTrue(input_files_section.visible)
+            visualization = page.objects[4]
+            self.assertFalse(visualization.visible)
+            model_upload.value = b"models"
+            self.assertFalse(configuration_section.visible)
+            self.assertFalse(input_files_section.visible)
+            self.assertTrue(visualization.visible)
+            self.assertFalse(status.visible)
+            add_timeout.assert_called_once()
+            self.assertEqual(add_timeout.call_args.kwargs["period"], 5000)
+            self.assertEqual(add_timeout.call_args.kwargs["count"], 1)
+
+            model_upload.value = None
+            self.assertTrue(configuration_section.visible)
+            self.assertTrue(input_files_section.visible)
+            self.assertFalse(visualization.visible)
+
+    def test_asset_success_confirmation_hides_after_five_seconds(self):
+        import panel as pn
+
+        from modules.interface.interface import create_main_layout
+
+        timeout_callbacks = []
+        with patch(
+            "modules.interface.interface.loadassets",
+            return_value=pd.DataFrame(columns=[
+                "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+                "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION",
+            ]),
+        ), patch(
+            "modules.interface.interface.pn.state.add_periodic_callback",
+            side_effect=lambda callback, **_kwargs: timeout_callbacks.append(callback),
+        ):
+            page = create_main_layout()
+            status = page.objects[3]
+            _, asset_upload, model_upload = page.select(pn.widgets.FileInput)
+
+            asset_upload.value = b"assets"
+            model_upload.value = b"models"
+
+            self.assertTrue(status.visible)
+            self.assertEqual(len(timeout_callbacks), 1)
+            timeout_callbacks[0]()
+            self.assertFalse(status.visible)
 
     def test_loadroom_accepts_uploaded_yaml_bytes(self):
         from modules.filemanager.filemanager import loadroom

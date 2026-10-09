@@ -117,12 +117,12 @@ def build_scene(
     label_meshes = []
     for row_index, row in enumerate(row_values):
         rack_x_positions = [rack_positions[(row, rack)][0] for rack in row_racks[row]]
-        row_label = pv.Text3D(f"Row {row}", height=0.15, depth=0)
+        row_label = pv.Text3D(f"Row {row}", height=0.18, depth=0)
         row_label.rotate_z(180, point=row_label.center, inplace=True)
         row_label.translate(
             (
-                sum(rack_x_positions) / len(rack_x_positions),
-                row_positions[row] + config.RACK_DEPTH / 2 + 0.2,
+                max(rack_x_positions) + config.RACK_WIDTH * 1.75,
+                row_positions[row],
                 0.02,
             ),
             inplace=True,

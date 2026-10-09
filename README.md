@@ -16,6 +16,7 @@ Specifies room dimensions and power details
 
 ```yaml
 room:
+  name: room name
   width: width in metres
   length: length in metres
   height: height in metres

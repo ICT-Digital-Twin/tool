@@ -1,4 +1,5 @@
 room:
+  name: "SampleColo-01"
   width: 10
   length: 6
   height: 2

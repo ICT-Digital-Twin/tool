@@ -90,8 +90,8 @@ def build_data_figure(
     row_column = "ROW" if "ROW" in asset_data else None
     rack_column = "RACK" if "RACK" in asset_data else None
     power_column = "POWERLOAD" if "POWERLOAD" in asset_data else None
-    row_title = "Powerload by row" if row_column and power_column else "Assets by Row"
-    rack_metric = "Power load" if power_column else "Asset count"
+    row_title = "Load by row" if row_column and power_column else "Assets by Row"
+    rack_metric = "Load" if power_column else "Asset count"
 
     figure = make_subplots(
         rows=1,
@@ -359,7 +359,7 @@ def build_data_figure(
     )
     figure.update_xaxes(title_text="Rack", row=1, col=2)
     figure.update_yaxes(
-        title_text=rack_metric,
+        title_text="" if power_column else rack_metric,
         rangemode="tozero",
         autorange=True,
         row=1,
