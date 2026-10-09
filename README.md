@@ -30,8 +30,8 @@ power:
 
 For multiple feeds serving the same row, put the feed number in the row name.
 The row's total feed capacity is the sum of its feeds.  
-Individual feed capacities are shown as green dotted lines in the row powerload chart.
-The row powerload chart shows two grouped bars per row, and the rack chart shows two grouped bars per rack: half of the total powerload on Feed 1 (blue) and half on Feed 2 (red).
+
+> add notes about the feed logic
 
 ```yaml
 power:
