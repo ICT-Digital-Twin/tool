@@ -38,6 +38,8 @@ def _function_colors(asset_data: pd.DataFrame) -> dict[str, str]:
         if pd.isna(value):
             continue
         function = str(value).strip()
+        if not function:
+            continue
         category = category_names.get(function.casefold())
         if category is not None:
             colors[function] = config.FUNCTION_COLORS[category]
@@ -51,6 +53,35 @@ def _function_colors(asset_data: pd.DataFrame) -> dict[str, str]:
         )
         colors[function] = "#" + "".join(f"{round(channel * 255):02x}" for channel in rgb)
     return colors
+
+
+def function_legend_entries(
+    asset_data: pd.DataFrame,
+    function_colors: dict[str, str],
+) -> list[tuple[str, str]]:
+    """Return unique function labels and the colors used for their devices."""
+    values = (
+        asset_data["FUNCTION"]
+        if "FUNCTION" in asset_data
+        else [None] * len(asset_data)
+    )
+    entries = []
+    seen = set()
+    for value in values:
+        if pd.isna(value):
+            label, color = "Unspecified", config.DEVICE_COLOR
+        else:
+            label = str(value).strip()
+            if not label:
+                label = "Unspecified"
+                color = config.DEVICE_COLOR
+            else:
+                color = function_colors.get(label, config.DEVICE_COLOR)
+        entry = (label, color)
+        if entry not in seen:
+            seen.add(entry)
+            entries.append(entry)
+    return entries
 
 
 def build_scene(

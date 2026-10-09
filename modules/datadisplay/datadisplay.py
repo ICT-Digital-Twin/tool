@@ -1,6 +1,7 @@
 """Build and serve linked Plotly and PyVista views of asset data."""
 from __future__ import annotations
 
+from html import escape
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -14,9 +15,36 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from tornado.web import StaticFileHandler
 
+import config
+from modules.display import function_legend_entries
+from modules.display.display import _function_colors
+
 
 _VTK_INTERACTION_SCRIPT = Path(__file__).with_name("static") / "z_up_interaction.js"
 VTK_INTERACTION_URL = "/ict-digital-twin/z_up_interaction.js"
+
+
+def _build_function_legend_html(asset_data: pd.DataFrame) -> str:
+    """Build a compact HTML legend for the function colors used by the devices."""
+    entries = function_legend_entries(asset_data, _function_colors(asset_data))
+    if not entries:
+        return ""
+
+    rows = "".join(
+        (
+            '<div style="display:flex;align-items:center;gap:7px;'
+            'font:12px sans-serif;line-height:18px;color:#f8fafc;">'
+            f'<span aria-hidden="true" style="display:inline-block;width:11px;'
+            f'height:11px;flex:0 0 11px;background:{escape(color, quote=True)};"></span>'
+            f'<span>{escape(label)}</span></div>'
+        )
+        for label, color in entries
+    )
+    return (
+        '<div style="display:inline-flex;flex-direction:column;gap:3px;'
+        'padding:8px 10px;background:transparent;pointer-events:none;">'
+        f"{rows}</div>"
+    )
 
 
 def _extract_feed_capacities(
@@ -461,6 +489,22 @@ def build_data_layout(
         sizing_mode="stretch_both",
         min_height=800,
     )
+    vtk_view = pn.Column(
+        vtk_pane,
+        pn.pane.HTML(
+            _build_function_legend_html(assets),
+            styles={
+                "position": "absolute",
+                "left": "12px",
+                "bottom": "48px",
+                "z-index": "10",
+            },
+            margin=0,
+        ),
+        sizing_mode="stretch_both",
+        min_height=800,
+        styles={"position": "relative"},
+    )
     plotly_pane = pn.pane.Plotly(
         build_data_figure(assets, room_layout_data),
         config={"responsive": True},
@@ -601,7 +645,7 @@ def build_data_layout(
         min_height=800,
     )
     return pn.Row(
-        vtk_pane,
+        vtk_view,
         dashboard,
         sizing_mode="stretch_both",
         min_height=800,
