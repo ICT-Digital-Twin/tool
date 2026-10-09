@@ -883,6 +883,7 @@ class ProjectValidationTests(unittest.TestCase):
             right_panel_content = layout[1][1]
             self.assertIsInstance(right_panel_selector, pn.widgets.Select)
             self.assertEqual(right_panel_selector.value, "assets")
+            self.assertEqual(right_panel_selector.styles, {})
             self.assertIsInstance(right_panel_content[0], pn.Column)
             asset_dashboard = right_panel_content[0]
             plotly_pane = asset_dashboard[0]
@@ -1016,6 +1017,15 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(layout[2].label, "Poll SNMP devices")
         self.assertFalse(layout[2].disabled)
         self.assertIsInstance(layout[3], pn.widgets.Tabulator)
+        self.assertEqual(
+            list(layout[3].value.columns),
+            ["Host", "Status", "Uptime", "Description", "Timestamp", "Serial"],
+        )
+        self.assertTrue(layout[3].show_index)
+        self.assertEqual(
+            layout[3].widths,
+            {"Description": 150, "Serial": 100},
+        )
         self.assertIsInstance(layout[4], pn.pane.Plotly)
 
     def test_snmp_view_updates_device_colors_legend_and_polling_state(self):

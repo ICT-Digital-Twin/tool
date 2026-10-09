@@ -730,13 +730,15 @@ def build_data_layout(
         min_height=800,
     )
     right_panel_selector = pn.widgets.Select(
-        label="Right panel",
+        label="",
         options={
             "Asset data": "assets",
             "SNMP data": "snmp",
         },
         value="assets",
         width=180,
+        height=32,
+        margin=(8, 0, 0, 0),
     )
     snmp_panel = build_snmp_layout(assets, on_results=update_snmp_colors)
 

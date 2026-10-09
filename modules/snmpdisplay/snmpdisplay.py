@@ -43,11 +43,11 @@ _SIMULATOR_ADDRESS = "127.0.0.1"
 _SIMULATOR_PORT = 1161
 _RESULT_COLUMNS = (
    "Host",
-   "System name",
-   "Serial",
-   "Description",
-   "Uptime (seconds)",
    "Status",
+   "Uptime",
+   "Description",
+   "Timestamp",
+   "Serial",
 )
 
 
@@ -223,6 +223,8 @@ def build_snmp_layout(
         pd.DataFrame(columns=_RESULT_COLUMNS),
         height=220,
         sizing_mode="stretch_width",
+        show_index=True,
+        widths={"Description": 150, "Serial": 100},
     )
     chart = pn.pane.Plotly(
         build_snmp_figure(),
@@ -255,7 +257,11 @@ def build_snmp_layout(
         for row in rows:
             row["Timestamp"] = polled_at
         history.extend(rows)
-        results.value = pd.DataFrame(rows, columns=(*_RESULT_COLUMNS, "Timestamp"))
+        results.value = (
+            pd.DataFrame(rows)
+            .rename(columns={"Uptime (seconds)": "Uptime"})
+            .reindex(columns=_RESULT_COLUMNS)
+        )
         chart.object = build_snmp_figure(history)
         if on_results is not None:
             on_results(rows)
