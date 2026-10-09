@@ -18,6 +18,7 @@ from tornado.web import StaticFileHandler
 import config
 from modules.display import function_legend_entries
 from modules.display.display import _function_colors
+from modules.snmpdisplay import build_snmp_layout
 
 
 _VTK_INTERACTION_SCRIPT = Path(__file__).with_name("static") / "z_up_interaction.js"
@@ -450,7 +451,8 @@ def build_data_layout(
     display_columns = [
         column
         for column in assets.columns
-        if str(column).strip().upper() not in {"INDEX", "AIRFLOW DIRECTION", "ROW", "SIZE"}
+        if str(column).strip().upper()
+        not in {"INDEX", "AIRFLOW DIRECTION", "ROW", "SIZE", "SNMP_COMMUNITY"}
     ]
     header_labels = {
         "INDEX": "Index",
@@ -503,7 +505,7 @@ def build_data_layout(
         ),
         sizing_mode="stretch_both",
         min_height=800,
-        styles={"position": "relative"},
+        styles={"position": "relative", "flex": "1.2 1 0px", "min-width": "0"},
     )
     plotly_pane = pn.pane.Plotly(
         build_data_figure(assets, room_layout_data),
@@ -627,26 +629,74 @@ def build_data_layout(
 
     clear_selection = pn.widgets.Button(
         label="Clear selection",
-        width=130,
+        color="primary",
+        width=120,
+        height=32,
+        margin=(8, 0, 0, 0),
+        styles={
+            "background": "#2563eb",
+            "border": "none",
+            "border-radius": "6px",
+            "box-shadow": "0 2px 5px rgba(0, 0, 0, 0.18)",
+            "color": "#ffffff",
+            "font-weight": "600",
+        },
     )
-    clear_selection.on_click(lambda _event: update_selection(set(), sync_inventory=True))
+
+    def clear_dashboard_selection(_event: object) -> None:
+        for controls in row_feed_controls.values():
+            for feed_control in controls:
+                feed_control.value = True
+        update_feed_load(None)
+        update_selection(set(), sync_inventory=True)
+
+    clear_selection.on_click(clear_dashboard_selection)
     plotly_pane.param.watch(on_plotly_click, "click_data")
     inventory.param.watch(on_inventory_selection, "selection")
     dashboard = pn.Column(
         plotly_pane,
-        feed_controls,
         pn.Row(
-            pn.pane.Markdown("Select a chart bar or inventory row to highlight it in 3D."),
+            feed_controls,
             clear_selection,
+            align="end",
             sizing_mode="stretch_width",
         ),
         inventory,
         sizing_mode="stretch_both",
         min_height=800,
     )
+    right_panel_content = pn.Column(
+        dashboard,
+        sizing_mode="stretch_both",
+        min_height=800,
+    )
+    right_panel_selector = pn.widgets.Select(
+        label="Right panel",
+        options={
+            "Asset data": "assets",
+            "SNMP data": "snmp",
+        },
+        value="assets",
+        width=180,
+    )
+    snmp_panel = build_snmp_layout()
+
+    def select_right_panel(event: object) -> None:
+        right_panel_content.objects = (
+            [snmp_panel] if event.new == "snmp" else [dashboard]
+        )
+
+    right_panel_selector.param.watch(select_right_panel, "value")
+    right_panel = pn.Column(
+        right_panel_selector,
+        right_panel_content,
+        sizing_mode="stretch_both",
+        min_height=800,
+        styles={"flex": "1 1 0px", "min-width": "0"},
+    )
     return pn.Row(
         vtk_view,
-        dashboard,
+        right_panel,
         sizing_mode="stretch_both",
         min_height=800,
     )

@@ -22,7 +22,7 @@ def asset_schema_validation_message(asset_data):
     """Return the validation status for the merged asset data columns."""
     expected_columns = [
         "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
-        "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"
+        "SNMP", "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"
     ]
     if list(asset_data.columns) == expected_columns:
         return "Schema validation PASSED"

@@ -78,7 +78,10 @@ power:
 #### loadassets
 
 Takes a CSV file as an input with the asset database, one device per row, with the following headers:  
-```INDEX  NAME  ROW  RACK  RACK_UNIT  SIZE  MODELNO```
+```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO  SNMP```
+
+`SNMP` contains the device's SNMP context selector ID. Imported assets receive
+an `SNMP_COMMUNITY` value from the room `name` in the layout YAML.
 
 ### Display
 

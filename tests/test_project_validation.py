@@ -34,7 +34,7 @@ class ProjectValidationTests(unittest.TestCase):
 
     def test_asset_schema_validation_message_reports_matching_columns(self):
         asset_data = pd.DataFrame(columns=[
-            "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+            "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO", "SNMP",
             "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION",
         ])
 
@@ -194,7 +194,7 @@ class ProjectValidationTests(unittest.TestCase):
         with patch("modules.interface.interface.loadroom", return_value={"room": {}}), patch(
             "modules.interface.interface.loadassets",
             return_value=pd.DataFrame(columns=[
-                "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+                "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO", "SNMP",
                 "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION",
             ]),
         ), patch("modules.interface.interface.build_scene", return_value=MagicMock(close=MagicMock())), patch(
@@ -229,6 +229,74 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertTrue(input_files_section.visible)
             self.assertFalse(visualization.visible)
 
+    def test_imported_asset_snmp_community_uses_room_name(self):
+        import panel as pn
+
+        from modules.interface.interface import create_main_layout
+
+        asset_data = pd.DataFrame(
+            [{
+                "INDEX": 1,
+                "NAME": "Asset 1",
+                "ROW": "A",
+                "RACK": "A01",
+                "RACK_UNIT": 1,
+                "MODELNO": "R670",
+                "SNMP": "context-7",
+                "SIZE": 1,
+                "POWERLOAD": 450,
+                "AIRFLOW DIRECTION": "Front-to-Rear",
+                "FUNCTION": "Compute",
+            }]
+        )
+        with patch(
+            "modules.interface.interface.loadroom",
+            return_value={"room": {"name": "SampleColo-01"}},
+        ), patch("modules.interface.interface.loadassets", return_value=asset_data), patch(
+            "modules.interface.interface.build_scene",
+            return_value=MagicMock(close=MagicMock()),
+        ), patch(
+            "modules.interface.interface.build_data_layout",
+            return_value=MagicMock(),
+        ) as build_data_layout, patch(
+            "modules.interface.interface.pn.state.add_periodic_callback"
+        ):
+            page = create_main_layout()
+            room_upload, asset_upload, model_upload = page.select(pn.widgets.FileInput)
+            asset_upload.value = b"assets"
+            model_upload.value = b"models"
+            room_upload.value = b"room"
+
+        rendered_assets = build_data_layout.call_args.args[0]
+        self.assertEqual(rendered_assets.loc[0, "SNMP"], "context-7")
+        self.assertEqual(rendered_assets.loc[0, "SNMP_COMMUNITY"], "SampleColo-01")
+
+    def test_inventory_view_hides_snmp_community_column(self):
+        from modules.datadisplay import build_data_layout
+        from modules.display.display import build_scene
+
+        asset_data = pd.DataFrame(
+            [{
+                "NAME": "Asset 1",
+                "ROW": "A",
+                "RACK": "A01",
+                "RACK_UNIT": 1,
+                "MODELNO": "R670",
+                "SNMP": "context-7",
+                "SNMP_COMMUNITY": "SampleColo-01",
+                "SIZE": 1,
+                "POWERLOAD": 450,
+                "FUNCTION": "Compute",
+            }]
+        )
+        plotter = build_scene(asset_data)
+        try:
+            layout = build_data_layout(asset_data, plotter)
+            inventory = layout[1].objects[1].objects[0].objects[3]
+            self.assertNotIn("SNMP_COMMUNITY", inventory.value.columns)
+        finally:
+            plotter.close()
+
     def test_asset_success_confirmation_hides_after_five_seconds(self):
         import panel as pn
 
@@ -238,7 +306,7 @@ class ProjectValidationTests(unittest.TestCase):
         with patch(
             "modules.interface.interface.loadassets",
             return_value=pd.DataFrame(columns=[
-                "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO",
+                "INDEX", "NAME", "ROW", "RACK", "RACK_UNIT", "MODELNO", "SNMP",
                 "SIZE", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION",
             ]),
         ), patch(
@@ -265,13 +333,25 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(room_layout["room"]["width"], 20)
 
     def test_loadassets_accepts_uploaded_csv_bytes(self):
-        asset_csv = b"ROW,RACK,RACK_UNIT,MODELNO\n1,A01,2,R670\n"
+        asset_csv = b"ROW,RACK,RACK_UNIT,MODELNO,SNMP\n1,A01,2,R670,context-7\n"
         model_csv = b"MODELNO,POWERLOAD\nR670,450\n"
 
         joined_data = loadassets(asset_csv, model_csv)
 
         self.assertEqual(joined_data.loc[0, "POWERLOAD"], 450)
         self.assertEqual(joined_data.loc[0, "RACK"], "A01")
+        self.assertEqual(joined_data.loc[0, "SNMP"], "context-7")
+
+    def test_sample_asset_csv_matches_the_import_schema(self):
+        project_root = Path(__file__).resolve().parents[1]
+        asset_data = loadassets(
+            project_root / "data" / "sample_input" / "asset_data.csv",
+            project_root / "data" / "sample_input" / "model_details.csv",
+        )
+
+        self.assertIsNotNone(asset_data)
+        self.assertEqual(asset_schema_validation_message(asset_data), "Schema validation PASSED")
+        self.assertEqual(asset_data["SNMP"].nunique(), 61)
 
     def test_function_colors_use_live_configuration(self):
         from modules.display.display import _function_colors
@@ -792,15 +872,35 @@ class ProjectValidationTests(unittest.TestCase):
                 asset_data, plotter, {"power": {"rpdu_capacity": 14000}}
             )
             self.assertIsInstance(layout, pn.Row)
-            self.assertIn("VTK", type(layout[0]).__name__)
-            self.assertIs(layout[0].object, plotter.ren_win)
+            self.assertIn("VTK", type(layout[0][0]).__name__)
+            self.assertIs(layout[0][0].object, plotter.ren_win)
+            self.assertEqual(layout[0].styles["flex"], "1.2 1 0px")
+            self.assertEqual(layout[0].styles["min-width"], "0")
             self.assertIsInstance(layout[1], pn.Column)
-            plotly_pane = layout[1][0]
-            feed_controls = layout[1][1]
-            clear_button = layout[1][2][1]
-            inventory = layout[1][3]
+            self.assertEqual(layout[1].styles["flex"], "1 1 0px")
+            self.assertEqual(layout[1].styles["min-width"], "0")
+            right_panel_selector = layout[1][0]
+            right_panel_content = layout[1][1]
+            self.assertIsInstance(right_panel_selector, pn.widgets.Select)
+            self.assertEqual(right_panel_selector.value, "assets")
+            self.assertIsInstance(right_panel_content[0], pn.Column)
+            asset_dashboard = right_panel_content[0]
+            plotly_pane = asset_dashboard[0]
+            controls_row = asset_dashboard[1]
+            feed_controls = controls_row[0]
+            clear_button = controls_row[1]
+            inventory = asset_dashboard[2]
             self.assertIsInstance(plotly_pane, pn.pane.Plotly)
             self.assertIsInstance(feed_controls, pn.Column)
+            self.assertIsInstance(controls_row, pn.Row)
+            self.assertIs(controls_row[1], clear_button)
+            self.assertEqual(clear_button.label, "Clear selection")
+            self.assertEqual(clear_button.color, "primary")
+            self.assertEqual(clear_button.width, 120)
+            self.assertEqual(clear_button.height, 32)
+            self.assertEqual(clear_button.margin, (8, 0, 0, 0))
+            self.assertEqual(clear_button.styles["background"], "#2563eb")
+            self.assertEqual(controls_row.align, "end")
             self.assertEqual(feed_controls[0].object, "Power feed toggle")
             self.assertEqual(len(feed_controls), 3)
             row_a_controls, row_b_controls = feed_controls[1:]
@@ -817,6 +917,13 @@ class ProjectValidationTests(unittest.TestCase):
             )
             self.assertEqual(feed_1.styles["color"], "#1f77b4")
             self.assertEqual(feed_2.styles["color"], "#d62728")
+            right_panel_selector.value = "snmp"
+            self.assertEqual(
+                right_panel_content[0][1].object.layout.title.text,
+                "SNMP Feed Data",
+            )
+            right_panel_selector.value = "assets"
+            self.assertIs(right_panel_content[0], asset_dashboard)
             self.assertIsInstance(inventory, pn.widgets.Tabulator)
             self.assertEqual(len(layout.objects), 2)
 
@@ -853,13 +960,41 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertNotEqual(plotter.actors["_ict_device_2"].prop.color.hex_rgba[:7], "#fff176")
             self.assertEqual(plotter.actors["_ict_rack_0"].prop.color.hex_rgba[:7], "#26c6da")
 
+            feed_2_row_b = row_b_controls[2]
+            feed_2_row_b.value = False
             clear_button.clicks += 1
 
             self.assertEqual(inventory.selection, [])
             self.assertNotEqual(plotter.actors["_ict_device_0"].prop.color.hex_rgba[:7], "#fff176")
             self.assertNotEqual(plotter.actors["_ict_rack_0"].prop.color.hex_rgba[:7], "#26c6da")
+            self.assertTrue(all(
+                feed_control.value
+                for controls in (row_a_controls, row_b_controls)
+                for feed_control in controls[1:]
+            ))
+            reset_figure = plotly_pane.object
+            self.assertEqual(list(reset_figure.data[0].y), [15000, 4000])
+            self.assertEqual(list(reset_figure.data[1].y), [15000, 4000])
+            self.assertEqual(list(reset_figure.data[2].y), [15000, 4000])
+            self.assertEqual(list(reset_figure.data[3].y), [15000, 4000])
         finally:
             plotter.close()
+
+    def test_snmpdisplay_builds_plotly_placeholder(self):
+        import panel as pn
+        import plotly.graph_objects as go
+
+        from modules.snmpdisplay import build_snmp_figure, build_snmp_layout
+
+        figure = build_snmp_figure()
+        layout = build_snmp_layout()
+
+        self.assertIsInstance(figure, go.Figure)
+        self.assertEqual(figure.layout.title.text, "SNMP Feed Data")
+        self.assertEqual(figure.data[0].name, "SNMP feed")
+        self.assertEqual(figure.layout.annotations[0].text, "SNMP polling is not connected yet")
+        self.assertIsInstance(layout, pn.Column)
+        self.assertIsInstance(layout[1], pn.pane.Plotly)
 
     def test_display_data_serves_combined_layout_in_browser(self):
         from modules.datadisplay import datadisplay

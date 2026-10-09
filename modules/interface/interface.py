@@ -7,7 +7,11 @@ import panel as pn
 from panel.io.server import StoppableThread
 
 import config
-from modules.datadisplay import VTK_INTERACTION_URL, build_data_layout, serve_layout
+from modules.datadisplay import (
+	VTK_INTERACTION_URL,
+	build_data_layout,
+	serve_layout,
+)
 from modules.display import build_scene
 from modules.filemanager import asset_schema_validation_message, loadassets, loadroom
 
@@ -59,17 +63,26 @@ def create_main_layout() -> pn.Column:
 	title = pn.pane.Markdown("# Digital Twin")
 
 	def format_room_title(room_layout: object) -> str:
+		room_name = get_room_name(room_layout)
+		return f"{room_name} Digital Twin" if room_name else "Digital Twin"
+
+	def get_room_name(room_layout: object) -> str | None:
 		if not isinstance(room_layout, Mapping):
-			return "Digital Twin"
+			return None
 		room = room_layout.get("room")
 		if isinstance(room, Mapping):
 			room_name = room.get("name") or room.get("room_name")
 		else:
 			room_name = room_layout.get("room_name") or room_layout.get("name")
 		if not isinstance(room_name, str):
-			return "Digital Twin"
+			return None
 		room_name = room_name.strip()
-		return f"{room_name} Digital Twin" if room_name else "Digital Twin"
+		return room_name or None
+
+	def update_snmp_community() -> None:
+		asset_data = state["asset_data"]
+		if isinstance(asset_data, pd.DataFrame):
+			asset_data["SNMP_COMMUNITY"] = get_room_name(state["room_layout"])
 
 	def set_title(room_layout: object) -> None:
 		title.object = f"# {format_room_title(room_layout)}"
@@ -154,6 +167,7 @@ def create_main_layout() -> pn.Column:
 	def load_room(event: object) -> None:
 		if not event.new:
 			state["room_layout"] = None
+			update_snmp_community()
 			update_configuration_visibility()
 			set_title(state["room_layout"])
 			clear_visualization()
@@ -164,12 +178,14 @@ def create_main_layout() -> pn.Column:
 				raise ValueError("The selected YAML file must contain a mapping.")
 		except Exception as error:
 			state["room_layout"] = None
+			update_snmp_community()
 			update_configuration_visibility()
 			set_title(state["room_layout"])
 			clear_visualization()
 			set_status(f"Could not load room layout: {error}", "danger")
 			return
 		state["room_layout"] = room_layout
+		update_snmp_community()
 		update_configuration_visibility()
 		set_title(room_layout)
 		set_status(f"Loaded room layout: {room_upload.filename}", "success")
@@ -193,9 +209,10 @@ def create_main_layout() -> pn.Column:
 			clear_visualization()
 			set_status(f"Could not load asset data: {error}", "danger")
 			return
-		state["asset_data"] = asset_data
-		update_configuration_visibility()
 		validation = asset_schema_validation_message(asset_data)
+		state["asset_data"] = asset_data
+		update_snmp_community()
+		update_configuration_visibility()
 		message = (
 			f"Loaded {len(asset_data)} assets from {asset_upload.filename} and {model_upload.filename}. "
 			f"{validation}"

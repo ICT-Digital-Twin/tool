@@ -7,7 +7,7 @@ Install the packages listed in `requirements.txt`, then run:
 python main.py
 ```
 
-The application opens in your default browser. Upload the room YAML, asset CSV, and model-details CSV on the main page; the configuration controls and combined 3D and inventory views are available there.
+The application opens in your default browser. Upload the room YAML, asset CSV, and model-details CSV on the main page; the configuration controls and combined 3D and inventory views are available there. Use the selector above the right-hand panel to switch between asset data and the SNMP chart template. The SNMP panel is a placeholder and does not connect to or poll SNMP devices yet.
 
 ## Input file requirements
 ### Room Layout (YAML)
@@ -44,9 +44,11 @@ power:
 ### Asset Data
 
 A CSV file with the following columns:  
-```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO```
+```INDEX  NAME  ROW  RACK  RACK_UNIT  MODELNO  SNMP```
 
-This is the asset database arranged into ROWs and RACKs.
+This is the asset database arranged into ROWs and RACKs. `SNMP` is the
+device's SNMP context selector ID. The imported asset data also includes
+`SNMP_COMMUNITY`, populated from the room's `name` in the YAML file.
 
 
 ### Asset details
