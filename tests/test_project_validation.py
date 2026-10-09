@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pyvista as pv
 
@@ -13,12 +14,12 @@ from modules.filemanager.filemanager import asset_schema_validation_message, che
 
 
 class ProjectValidationTests(unittest.TestCase):
-    def test_pyvista_and_dearpygui_can_be_imported_in_order(self):
+    def test_pyvista_and_panel_can_be_imported_in_order(self):
         result = subprocess.run(
             [
                 sys.executable,
                 "-c",
-                "import pyvista; import dearpygui.dearpygui as dpg; print('ok', dpg.__file__)",
+                "import pyvista; import panel; print('ok', panel.__version__)",
             ],
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,
@@ -26,6 +27,10 @@ class ProjectValidationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("ok", result.stdout)
+
+    def test_dearpygui_is_not_a_runtime_dependency(self):
+        requirements = Path("requirements.txt").read_text(encoding="utf-8")
+        self.assertNotIn("dearpygui", requirements.lower())
 
     def test_asset_schema_validation_message_reports_matching_columns(self):
         asset_data = pd.DataFrame(columns=[
@@ -53,13 +58,10 @@ class ProjectValidationTests(unittest.TestCase):
         model_data = pd.DataFrame(columns=["MODELNO", "POWERLOAD", "AIRFLOW DIRECTION", "FUNCTION"])
 
         with patch(
-            "modules.filemanager.filemanager.filedialog.askopenfilename",
-            side_effect=["assets.csv", "model_details.csv"],
-        ), patch(
             "modules.filemanager.filemanager.pd.read_csv",
             side_effect=[asset_data, model_data],
         ):
-            sorted_data = loadassets()
+            sorted_data = loadassets("assets.csv", "model_details.csv")
 
         assert sorted_data is not None
         self.assertEqual(
@@ -93,13 +95,10 @@ class ProjectValidationTests(unittest.TestCase):
         )
 
         with patch(
-            "modules.filemanager.filemanager.filedialog.askopenfilename",
-            side_effect=["assets.csv", "model_details.csv"],
-        ), patch(
             "modules.filemanager.filemanager.pd.read_csv",
             side_effect=[asset_data, model_data],
         ):
-            joined_data = loadassets()
+            joined_data = loadassets("assets.csv", "model_details.csv")
 
         assert joined_data is not None
         self.assertEqual(joined_data.loc[0, "POWERLOAD"], 450)
@@ -121,34 +120,90 @@ class ProjectValidationTests(unittest.TestCase):
         mock_check.assert_called_once()
         mock_interface.assert_called_once_with()
 
-    def test_stop_web_servers_stops_and_clears_handles(self):
-        from modules.interface.interface import _stop_web_servers
+    def test_run_interface_serves_the_main_page_once(self):
+        from modules.interface.interface import run_interface
 
-        servers = [MagicMock(), MagicMock()]
-        server_handles = servers.copy()
+        page = MagicMock()
+        with patch("modules.interface.interface.create_main_layout", return_value=page), patch(
+            "modules.interface.interface.serve_layout"
+        ) as mock_serve:
+            mock_serve.return_value = MagicMock()
+            run_interface()
 
-        _stop_web_servers(servers)
+        mock_serve.assert_called_once_with(page, threaded=True)
+        mock_serve.return_value.join.assert_called_once_with()
 
-        for server in server_handles:
-            server.stop.assert_called_once_with()
-            server.join.assert_called_once_with()
-        self.assertEqual(servers, [])
+    def test_run_interface_stops_server_when_page_session_is_destroyed(self):
+        from modules.interface.interface import run_interface
 
-    def test_shutdown_interface_stops_dearpygui_and_closes_context(self):
-        from modules.interface.interface import _shutdown_interface
+        page = MagicMock()
+        server_thread = MagicMock()
+        session_destroyed = None
 
-        server = MagicMock()
-        servers = [server]
+        def register_session_destroyed(callback):
+            nonlocal session_destroyed
+            session_destroyed = callback
 
-        with patch("modules.interface.interface.dpg.is_dearpygui_running", return_value=True), patch(
-            "modules.interface.interface.dpg.stop_dearpygui"
-        ) as mock_stop, patch("modules.interface.interface.dpg.destroy_context") as mock_destroy:
-            _shutdown_interface(servers)
+        with patch("modules.interface.interface.create_main_layout", return_value=page), patch(
+            "modules.interface.interface.pn.state.on_session_destroyed",
+            side_effect=register_session_destroyed,
+        ), patch("modules.interface.interface.serve_layout", return_value=server_thread):
+            run_interface()
 
-        server.stop.assert_called_once_with()
-        mock_stop.assert_called_once_with()
-        mock_destroy.assert_called_once_with()
-        self.assertEqual(servers, [])
+        self.assertIsNotNone(session_destroyed)
+        session_destroyed(MagicMock())
+        server_thread.stop.assert_called_once_with()
+        server_thread.join.assert_called_once_with()
+
+    def test_main_page_has_three_browser_upload_controls(self):
+        import panel as pn
+
+        from modules.interface.interface import create_main_layout
+
+        page = create_main_layout()
+
+        self.assertIsInstance(page, pn.Column)
+        self.assertEqual(len(page.select(pn.widgets.FileInput)), 3)
+
+    def test_configuration_follows_visualization_and_starts_collapsed(self):
+        import panel as pn
+
+        from modules.interface.interface import create_main_layout
+
+        page = create_main_layout()
+        configuration_heading_index = next(
+            index
+            for index, item in enumerate(page.objects)
+            if isinstance(item, pn.pane.Markdown) and item.object == "## Configuration"
+        )
+        visualization_index = next(
+            index
+            for index, item in enumerate(page.objects)
+            if isinstance(item, pn.Column)
+            and item.objects
+            and isinstance(item.objects[0], pn.pane.Markdown)
+            and item.objects[0].object.startswith("### Visualization")
+        )
+        accordion = next(item for item in page.objects if isinstance(item, pn.Accordion))
+
+        self.assertLess(visualization_index, configuration_heading_index)
+        self.assertEqual(accordion.active, [])
+
+    def test_loadroom_accepts_uploaded_yaml_bytes(self):
+        from modules.filemanager.filemanager import loadroom
+
+        room_layout = loadroom(b"room:\n  width: 20\n  length: 12\n  height: 3\n")
+
+        self.assertEqual(room_layout["room"]["width"], 20)
+
+    def test_loadassets_accepts_uploaded_csv_bytes(self):
+        asset_csv = b"ROW,RACK,RACK_UNIT,MODELNO\n1,A01,2,R670\n"
+        model_csv = b"MODELNO,POWERLOAD\nR670,450\n"
+
+        joined_data = loadassets(asset_csv, model_csv)
+
+        self.assertEqual(joined_data.loc[0, "POWERLOAD"], 450)
+        self.assertEqual(joined_data.loc[0, "RACK"], "A01")
 
     def test_function_colors_use_live_configuration(self):
         from modules.display.display import _function_colors
@@ -175,6 +230,100 @@ class ProjectValidationTests(unittest.TestCase):
 
         plotter = build_scene(asset_data)
         self.assertIsNotNone(plotter)
+
+    def test_build_scene_adds_row_and_rack_labels_for_panel_vtk(self):
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "ASSET-001", "ROW": "A", "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1},
+                {"NAME": "ASSET-002", "ROW": "A", "RACK": "A02", "RACK_UNIT": 1, "SIZE": 1},
+                {"NAME": "ASSET-003", "ROW": "B", "RACK": "B01", "RACK_UNIT": 1, "SIZE": 1},
+            ]
+        )
+
+        from bokeh.document import Document
+        from modules.datadisplay import build_data_layout
+        from modules.display.display import build_scene
+
+        plotter = build_scene(asset_data)
+        try:
+            self.assertEqual(
+                [name for name in plotter.actors if name.startswith("_ict_row_label_")],
+                ["_ict_row_label_0", "_ict_row_label_1"],
+            )
+            self.assertEqual(
+                [name for name in plotter.actors if name.startswith("_ict_rack_label_")],
+                ["_ict_rack_label_0", "_ict_rack_label_1", "_ict_rack_label_2"],
+            )
+            layout = build_data_layout(asset_data, plotter)
+            self.assertIs(layout[0].object, plotter.ren_win)
+            self.assertIsNotNone(layout[0].get_root(Document()))
+        finally:
+            plotter.close()
+
+    def test_build_scene_flips_row_and_rack_labels_vertically(self):
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "ASSET-001", "ROW": "A", "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1},
+                {"NAME": "ASSET-002", "ROW": "B", "RACK": "B01", "RACK_UNIT": 1, "SIZE": 1},
+            ]
+        )
+
+        from modules.display.display import build_scene
+
+        original_text3d = pv.Text3D
+        labels = []
+
+        def capture_text3d(*args, **kwargs):
+            label = original_text3d(*args, **kwargs)
+            labels.append((label, label.points.copy(), label.center))
+            return label
+
+        with patch("modules.display.display.pv.Text3D", new=capture_text3d):
+            plotter = build_scene(asset_data)
+
+        try:
+            self.assertEqual(len(labels), 4)
+            for label, original_points, original_center in labels:
+                centered_original = original_points - original_center
+                centered_label = label.points - label.center
+                np.testing.assert_allclose(
+                    centered_label[:, 0], -centered_original[:, 0], atol=1e-6
+                )
+                np.testing.assert_allclose(
+                    centered_label[:, 1], -centered_original[:, 1], atol=1e-6
+                )
+                np.testing.assert_allclose(
+                    centered_label[:, 2], centered_original[:, 2], atol=1e-6
+                )
+        finally:
+            plotter.close()
+
+    def test_build_scene_places_row_labels_on_opposite_side_of_rows(self):
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "ASSET-001", "ROW": "A", "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1},
+                {"NAME": "ASSET-002", "ROW": "B", "RACK": "B01", "RACK_UNIT": 1, "SIZE": 1},
+            ]
+        )
+
+        from modules.display.display import build_scene
+
+        original_text3d = pv.Text3D
+        labels = []
+
+        def capture_text3d(*args, **kwargs):
+            label = original_text3d(*args, **kwargs)
+            labels.append(label)
+            return label
+
+        with patch("modules.display.display.pv.Text3D", new=capture_text3d):
+            plotter = build_scene(asset_data)
+
+        try:
+            self.assertAlmostEqual(labels[0].center[1], 0.7)
+            self.assertAlmostEqual(labels[1].center[1], 2.7)
+        finally:
+            plotter.close()
 
     def test_build_scene_colors_devices_by_function(self):
         asset_data = pd.DataFrame(
@@ -271,14 +420,11 @@ class ProjectValidationTests(unittest.TestCase):
         finally:
             plotter.close()
 
-    def test_gui_configuration_omits_removed_controls(self):
+    def test_interface_has_no_dearpygui_dependency(self):
         interface_source = Path("modules/interface/interface.py").read_text(encoding="utf-8")
 
-        self.assertNotIn("Room opacity", interface_source)
-        self.assertNotIn("Function color hue step", interface_source)
-        self.assertNotIn("Function color saturation", interface_source)
-        self.assertNotIn("Function color brightness", interface_source)
-        self.assertNotIn('with dpg.collapsing_header(label="Display"', interface_source)
+        self.assertNotIn("dearpygui", interface_source.lower())
+        self.assertIn("pn.widgets.FileInput", interface_source)
 
     def test_build_scene_has_no_information_or_axis_labels(self):
         asset_data = pd.DataFrame(
@@ -330,16 +476,28 @@ class ProjectValidationTests(unittest.TestCase):
         figure = build_data_figure(asset_data)
 
         self.assertIsInstance(figure, go.Figure)
-        self.assertEqual(len(figure.data), 2)
-        self.assertIsInstance(figure.data[0], go.Bar)
-        self.assertEqual(figure.data[0].name, "Power load by row")
-        self.assertEqual(list(figure.data[0].y), [530])
-        self.assertEqual(list(figure.data[0].customdata), [["ROW", "A"]])
-        self.assertEqual(figure.data[1].name, "Power load by rack")
-        self.assertEqual(list(figure.data[1].y), [530])
-        self.assertEqual(list(figure.data[1].customdata), [["RACK", "A01"]])
+        self.assertEqual(len(figure.data), 4)
+        first_feed, second_feed = figure.data[:2]
+        self.assertIsInstance(first_feed, go.Bar)
+        self.assertEqual(first_feed.name, "Feed 1 powerload")
+        self.assertEqual(list(first_feed.y), [265])
+        self.assertEqual(first_feed.marker.color, "#1f77b4")
+        self.assertEqual(list(first_feed.customdata), [["ROW", "A"]])
+        self.assertEqual(second_feed.name, "Feed 2 powerload")
+        self.assertEqual(list(second_feed.y), [265])
+        self.assertEqual(second_feed.marker.color, "#d62728")
+        self.assertEqual(figure.layout.barmode, "group")
+        self.assertEqual(figure.data[2].name, "Feed 1 powerload")
+        self.assertEqual(list(figure.data[2].y), [265])
+        self.assertEqual(figure.data[2].marker.color, "#1f77b4")
+        self.assertEqual(list(figure.data[2].customdata), [["RACK", "A01"]])
+        self.assertEqual(figure.data[3].name, "Feed 2 powerload")
+        self.assertEqual(list(figure.data[3].y), [265])
+        self.assertEqual(figure.data[3].marker.color, "#d62728")
+        self.assertTrue(figure.layout.yaxis.autorange)
+        self.assertTrue(figure.layout.yaxis2.autorange)
 
-    def test_data_figure_includes_row_feed_capacity_reference_line(self):
+    def test_data_figure_omits_total_feed_capacity_line_and_plots_individual_feeds(self):
         from modules.datadisplay import build_data_figure
 
         asset_data = pd.DataFrame(
@@ -357,14 +515,16 @@ class ProjectValidationTests(unittest.TestCase):
 
         figure = build_data_figure(asset_data, room_layout_data)
 
-        self.assertEqual(len(figure.data), 3)
+        self.assertEqual(len(figure.data), 4)
         self.assertEqual(list(figure.data[0].x), ["A", "B"])
-        self.assertEqual(list(figure.data[0].y), [450, 250])
-        self.assertEqual(figure.data[0].name, "Power load by row")
-        capacity_trace = figure.data[1]
-        self.assertEqual(capacity_trace.type, "scatter")
-        self.assertEqual(capacity_trace.mode, "lines")
-        self.assertEqual(list(capacity_trace.y), [1000, 2000])
+        self.assertEqual(list(figure.data[0].y), [225, 125])
+        self.assertEqual(list(figure.data[1].y), [225, 125])
+        self.assertEqual([trace.name for trace in figure.data], [
+            "Feed 1 powerload",
+            "Feed 2 powerload",
+            "Feed 1 powerload",
+            "Feed 2 powerload",
+        ])
         self.assertEqual(list(figure.data[2].customdata), [["RACK", "A01"], ["RACK", "B01"]])
 
     def test_data_figure_sums_numbered_feed_capacities_and_plots_each_feed(self):
@@ -387,20 +547,74 @@ class ProjectValidationTests(unittest.TestCase):
 
         figure = build_data_figure(asset_data, room_layout_data)
 
-        self.assertEqual(list(figure.data[0].y), [450, 250])
-        total_capacity_trace, first_feed_trace, second_feed_trace = figure.data[1:4]
-        self.assertEqual(total_capacity_trace.name, "Total feed capacity")
-        self.assertEqual(list(total_capacity_trace.y), [75000, 55000])
+        self.assertEqual(list(figure.data[0].y), [225, 125])
+        self.assertEqual(list(figure.data[1].y), [225, 125])
+        first_feed_trace, second_feed_trace = figure.data[2:4]
         self.assertEqual(first_feed_trace.name, "Feed 1 capacity")
         self.assertEqual(list(first_feed_trace.y), [40000, 30000])
-        self.assertEqual(first_feed_trace.line.color, "#16803c")
+        self.assertEqual(first_feed_trace.line.color, "#d62728")
         self.assertEqual(first_feed_trace.line.dash, "dot")
         self.assertEqual(second_feed_trace.name, "Feed 2 capacity")
         self.assertEqual(list(second_feed_trace.y), [35000, 25000])
         self.assertEqual(second_feed_trace.line.dash, "dot")
-        self.assertEqual(figure.data[4].name, "Power load by rack")
+        self.assertEqual(figure.data[4].name, "Feed 1 powerload")
+        self.assertEqual(figure.data[5].name, "Feed 2 powerload")
 
-    def test_data_figure_includes_rpdu_capacity_reference_line(self):
+    def test_data_figure_plots_a1_and_b1_capacities_for_rows_with_two_powerloads(self):
+        from modules.datadisplay import build_data_figure
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "POWERLOAD": 450},
+                {"NAME": "Switch A", "ROW": "A", "RACK": "A01", "POWERLOAD": 80},
+                {"NAME": "Server B", "ROW": "B", "RACK": "B01", "POWERLOAD": 250},
+            ]
+        )
+        room_layout_data = {
+            "power": {
+                "feed_a1_capacity": 40000,
+                "feed_b1_capacity": 30000,
+            }
+        }
+
+        figure = build_data_figure(asset_data, room_layout_data)
+
+        self.assertEqual(list(figure.data[0].y), [265, 125])
+        self.assertEqual(list(figure.data[1].y), [265, 125])
+        a1_trace, b1_trace = figure.data[2:4]
+        self.assertEqual(a1_trace.name, "A1 capacity")
+        self.assertEqual(list(a1_trace.y), [40000, None])
+        self.assertEqual(a1_trace.line.color, "#1f77b4")
+        self.assertEqual(b1_trace.name, "B1 capacity")
+        self.assertEqual(list(b1_trace.y), [30000, None])
+        self.assertEqual(b1_trace.line.color, "#d62728")
+
+    def test_data_figure_plots_numbered_feed_capacities_for_any_row_label(self):
+        from modules.datadisplay import build_data_figure
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "POWERLOAD": 450},
+                {"NAME": "Switch A", "ROW": "A", "RACK": "A01", "POWERLOAD": 80},
+                {"NAME": "Server C", "ROW": "C", "RACK": "C01", "POWERLOAD": 320},
+            ]
+        )
+        room_layout_data = {
+            "power": {
+                "feed_a1_capacity": 40000,
+                "feed_c1_capacity": 50000,
+            }
+        }
+
+        figure = build_data_figure(asset_data, room_layout_data)
+
+        self.assertEqual(list(figure.data[0].y), [265, 160])
+        self.assertEqual(list(figure.data[1].y), [265, 160])
+        trace_names = [trace.name for trace in figure.data[2:]]
+        self.assertIn("A1 capacity", trace_names)
+        self.assertIn("C1 capacity", trace_names)
+
+    def test_data_figure_omits_rpdu_capacity_reference_line(self):
         from modules.datadisplay import build_data_figure
 
         asset_data = pd.DataFrame(
@@ -414,37 +628,104 @@ class ProjectValidationTests(unittest.TestCase):
         figure = build_data_figure(asset_data, room_layout_data)
 
         self.assertEqual(len(figure.data), 3)
-        self.assertEqual(figure.data[1].name, "Power load by rack")
-        reference_trace = figure.data[-1]
-        self.assertEqual(reference_trace.type, "scatter")
-        self.assertEqual(reference_trace.mode, "lines")
-        self.assertTrue(all(value == 14000 for value in reference_trace.y))
+        self.assertEqual(figure.data[1].name, "Feed 1 powerload")
+        self.assertEqual(figure.data[1].y, (265,))
+        self.assertEqual(figure.data[2].name, "Feed 2 powerload")
+        self.assertEqual(figure.data[2].y, (265,))
 
-    def test_plotly_selection_highlights_matching_devices_and_racks(self):
+    def test_data_figure_redistributes_load_and_shows_exceeded_rpdu_limit(self):
+        from modules.datadisplay import build_data_figure
+
+        asset_data = pd.DataFrame(
+            [
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "POWERLOAD": 20000},
+            ]
+        )
+        room_layout_data = {"power": {"rpdu_capacity": 14000}}
+
+        figure = build_data_figure(asset_data, room_layout_data)
+
+        self.assertEqual(list(figure.data[0].y), [10000])
+        self.assertEqual(list(figure.data[1].y), [10000])
+        self.assertNotIn("RPDU limit", [trace.name for trace in figure.data])
+
+        figure = build_data_figure(
+            asset_data,
+            room_layout_data,
+            row_feeds=(True, False),
+            rack_feeds=(False, True),
+        )
+
+        self.assertEqual(list(figure.data[0].y), [20000])
+        self.assertTrue(figure.data[0].visible)
+        self.assertEqual(list(figure.data[1].y), [0])
+        self.assertFalse(figure.data[1].visible)
+        self.assertEqual(list(figure.data[2].y), [0])
+        self.assertFalse(figure.data[2].visible)
+        self.assertEqual(list(figure.data[3].y), [20000])
+        self.assertTrue(figure.data[3].visible)
+        self.assertEqual(figure.data[4].name, "RPDU limit")
+        self.assertEqual(list(figure.data[4].y), [14000])
+        self.assertEqual(figure.data[4].line.color, "#d62728")
+        self.assertEqual(figure.data[4].line.dash, "dot")
+
+    def test_plotly_feed_controls_and_selection_highlight_matching_devices_and_racks(self):
         from modules.datadisplay import build_data_layout
         from modules.display.display import build_scene
         import panel as pn
 
         asset_data = pd.DataFrame(
             [
-                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1},
-                {"NAME": "Server B", "ROW": "A", "RACK": "A01", "RACK_UNIT": 2, "SIZE": 1},
-                {"NAME": "Server C", "ROW": "B", "RACK": "B01", "RACK_UNIT": 1, "SIZE": 1},
+                {"NAME": "Server A", "ROW": "A", "RACK": "A01", "RACK_UNIT": 1, "SIZE": 1, "POWERLOAD": 20000},
+                {"NAME": "Server B", "ROW": "A", "RACK": "A01", "RACK_UNIT": 2, "SIZE": 1, "POWERLOAD": 10000},
+                {"NAME": "Server C", "ROW": "B", "RACK": "B01", "RACK_UNIT": 1, "SIZE": 1, "POWERLOAD": 8000},
             ]
         )
         plotter = build_scene(asset_data)
         try:
-            layout = build_data_layout(asset_data, plotter)
+            layout = build_data_layout(
+                asset_data, plotter, {"power": {"rpdu_capacity": 14000}}
+            )
             self.assertIsInstance(layout, pn.Row)
             self.assertIn("VTK", type(layout[0]).__name__)
             self.assertIs(layout[0].object, plotter.ren_win)
             self.assertIsInstance(layout[1], pn.Column)
             plotly_pane = layout[1][0]
-            clear_button = layout[1][1][1]
-            inventory = layout[1][2]
+            feed_controls = layout[1][1]
+            clear_button = layout[1][2][1]
+            inventory = layout[1][3]
             self.assertIsInstance(plotly_pane, pn.pane.Plotly)
+            self.assertIsInstance(feed_controls, pn.Column)
+            self.assertEqual(feed_controls[0].object, "Power feed toggle")
+            self.assertEqual(len(feed_controls), 3)
+            row_a_controls, row_b_controls = feed_controls[1:]
+            self.assertEqual(row_a_controls[0].object, "**Row A**")
+            self.assertEqual(row_b_controls[0].object, "**Row B**")
+            feed_1, feed_2 = row_a_controls[1:]
+            self.assertEqual(
+                [control.name for control in (feed_1, feed_2)],
+                ["Feed 1", "Feed 2"],
+            )
+            self.assertEqual(
+                [control.name for control in row_b_controls[1:]],
+                ["Feed 1", "Feed 2"],
+            )
+            self.assertEqual(feed_1.styles["color"], "#1f77b4")
+            self.assertEqual(feed_2.styles["color"], "#d62728")
             self.assertIsInstance(inventory, pn.widgets.Tabulator)
             self.assertEqual(len(layout.objects), 2)
+
+            feed_1.value = False
+
+            updated_figure = plotly_pane.object
+            self.assertEqual(list(updated_figure.data[0].y), [0, 4000])
+            self.assertTrue(updated_figure.data[0].visible)
+            self.assertEqual(list(updated_figure.data[1].y), [30000, 4000])
+            self.assertTrue(updated_figure.data[1].visible)
+            self.assertEqual(list(updated_figure.data[2].y), [0, 4000])
+            self.assertTrue(updated_figure.data[2].visible)
+            self.assertEqual(list(updated_figure.data[3].y), [30000, 4000])
+            self.assertEqual(updated_figure.data[4].name, "RPDU limit")
 
             plotly_pane.click_data = {"points": [{"customdata": ["ROW", "A"]}]}
 

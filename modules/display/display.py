@@ -114,6 +114,21 @@ def build_scene(
                 row_positions[row],
             )
 
+    label_meshes = []
+    for row_index, row in enumerate(row_values):
+        rack_x_positions = [rack_positions[(row, rack)][0] for rack in row_racks[row]]
+        row_label = pv.Text3D(f"Row {row}", height=0.15, depth=0)
+        row_label.rotate_z(180, point=row_label.center, inplace=True)
+        row_label.translate(
+            (
+                sum(rack_x_positions) / len(rack_x_positions),
+                row_positions[row] + config.RACK_DEPTH / 2 + 0.2,
+                0.02,
+            ),
+            inplace=True,
+        )
+        label_meshes.append((row_label, f"_ict_row_label_{row_index}"))
+
     if has_room_dimensions:
         room_mesh = pv.Box(bounds=(0, room_width, 0, room_length, 0, room_height))
         plotter.add_mesh(
@@ -143,6 +158,13 @@ def build_scene(
             line_width=config.RACK_LINE_WIDTH,
             name=f"_ict_rack_{rack_index}",
         )
+        rack_label = pv.Text3D(str(rack), height=0.14, depth=0)
+        rack_label.rotate_z(180, point=rack_label.center, inplace=True)
+        rack_label.translate(
+            (x, y, config.RACK_HEIGHT + 0.02),
+            inplace=True,
+        )
+        label_meshes.append((rack_label, f"_ict_rack_label_{rack_index}"))
 
         rack_assets = asset_data[(asset_data["ROW"] == row) & (asset_data["RACK"] == rack)]
         for asset in rack_assets.itertuples(index=True):
@@ -170,6 +192,16 @@ def build_scene(
                 edge_color=config.DEVICE_EDGE_COLOR,
                 name=f"_ict_device_{asset.Index}",
             )
+
+    for label_mesh, label_name in label_meshes:
+        plotter.add_mesh(
+            label_mesh,
+            color=config.TEXT_COLOR,
+            lighting=False,
+            name=label_name,
+            reset_camera=False,
+            render=False,
+        )
 
     if config.GRID_SHOW_AXIS_LABELS:
         plotter.show_grid(

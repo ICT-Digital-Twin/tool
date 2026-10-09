@@ -2,7 +2,6 @@ pyvista
 kaleido>=1.0.0
 PyYAML
 pandas
-dearpygui
 plotly
 panel
 

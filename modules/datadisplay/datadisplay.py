@@ -4,33 +4,19 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal, overload
 
+from bokeh.server.server import Server
 import pandas as pd
 import panel as pn
+from panel.io.server import StoppableThread
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from tornado.web import StaticFileHandler
 
 
 _VTK_INTERACTION_SCRIPT = Path(__file__).with_name("static") / "z_up_interaction.js"
-_VTK_INTERACTION_URL = "/ict-digital-twin/z_up_interaction.js"
-
-
-def _extract_rpdu_capacity(room_layout_data: Mapping[str, object] | None) -> float | None:
-    """Return the configured RPDU capacity from the room layout, if present."""
-    if not isinstance(room_layout_data, Mapping):
-        return None
-
-    power_data = room_layout_data.get("power", {})
-    if not isinstance(power_data, Mapping):
-        return None
-
-    value = power_data.get("rpdu_capacity")
-    try:
-        capacity = float(value)
-    except (TypeError, ValueError):
-        return None
-    return capacity if capacity > 0 else None
+VTK_INTERACTION_URL = "/ict-digital-twin/z_up_interaction.js"
 
 
 def _extract_feed_capacities(
@@ -63,9 +49,39 @@ def _extract_feed_capacities(
     return capacities
 
 
+def _extract_rpdu_capacity(
+    room_layout_data: Mapping[str, object] | None,
+) -> float | None:
+    """Return the configured RPDU capacity when it is a positive number."""
+    if not isinstance(room_layout_data, Mapping):
+        return None
+
+    power_data = room_layout_data.get("power", {})
+    if not isinstance(power_data, Mapping):
+        return None
+
+    try:
+        capacity = float(power_data.get("rpdu_capacity"))
+    except (TypeError, ValueError):
+        return None
+    return capacity if capacity > 0 else None
+
+
+def _get_feed_state(
+    feeds: tuple[bool, bool] | Mapping[str, tuple[bool, bool]],
+    row: object,
+) -> tuple[bool, bool]:
+    """Return the active feed state for one row."""
+    if isinstance(feeds, Mapping):
+        return feeds.get(str(row), feeds.get("All rows", (True, True)))
+    return feeds
+
+
 def build_data_figure(
     asset_data: pd.DataFrame,
     room_layout_data: Mapping[str, object] | None = None,
+    row_feeds: tuple[bool, bool] | Mapping[str, tuple[bool, bool]] = (True, True),
+    rack_feeds: tuple[bool, bool] | Mapping[str, tuple[bool, bool]] = (True, True),
 ) -> go.Figure:
     """Build the row and rack charts used by the inventory dashboard."""
     if not isinstance(asset_data, pd.DataFrame):
@@ -94,48 +110,120 @@ def build_data_figure(
             row_values = row_data.groupby(row_column, dropna=False).size()
         row_x = row_values.index.astype(str).tolist()
         row_y = row_values.values.tolist()
-        figure.add_trace(
-            go.Bar(
-                x=row_x,
-                y=row_y,
-                customdata=[["ROW", value] for value in row_x],
-                name="Power load by row" if power_column else "Assets by row",
-                marker_color="#d18a46",
-            ),
-            row=1,
-            col=1,
-        )
         if power_column:
-            row_feed_capacities = [
-                _extract_feed_capacities(room_layout_data, row)
-                for row in row_values.index
+            row_feed_states = [
+                _get_feed_state(row_feeds, row_name) for row_name in row_values.index
             ]
-            row_capacities = [
-                sum(capacities.values()) if capacities else None
-                for capacities in row_feed_capacities
-            ]
-            if any(capacity is not None for capacity in row_capacities):
-                has_numbered_feeds = any(
-                    feed_number
-                    for capacities in row_feed_capacities
-                    for feed_number in capacities
+            for feed_index, (feed_name, color) in enumerate(
+                (
+                    ("Feed 1 powerload", "#1f77b4"),
+                    ("Feed 2 powerload", "#d62728"),
+                )
+            ):
+                visible = (
+                    any(state[feed_index] for state in row_feed_states)
+                    if isinstance(row_feeds, Mapping)
+                    else row_feeds[feed_index]
                 )
                 figure.add_trace(
-                    go.Scatter(
+                    go.Bar(
                         x=row_x,
-                        y=row_capacities,
-                        mode="lines",
-                        line={"color": "#b42318", "width": 2, "dash": "dash"},
-                        name="Total feed capacity" if has_numbered_feeds else "Feed capacity",
+                        y=[
+                            powerload / sum(state)
+                            if state[feed_index] and sum(state)
+                            else 0
+                            for powerload, state in zip(row_y, row_feed_states)
+                        ],
+                        customdata=[["ROW", value] for value in row_x],
+                        name=feed_name,
+                        marker_color=color,
+                        visible=visible,
                         hovertemplate=(
-                            "Total feed capacity for row %{x}: %{y}<extra></extra>"
-                            if has_numbered_feeds
-                            else "Feed %{x} capacity: %{y}<extra></extra>"
+                            f"{feed_name} for row %{{x}}: %{{y}}<extra></extra>"
                         ),
                     ),
                     row=1,
                     col=1,
                 )
+        else:
+            figure.add_trace(
+                go.Bar(
+                    x=row_x,
+                    y=row_y,
+                    customdata=[["ROW", value] for value in row_x],
+                    name="Assets by row",
+                    marker_color="#d18a46",
+                ),
+                row=1,
+                col=1,
+            )
+        if power_column:
+            row_feed_capacities = [
+                _extract_feed_capacities(room_layout_data, row)
+                for row in row_values.index
+            ]
+            powerload_counts = pd.to_numeric(
+                row_data[power_column], errors="coerce"
+            ).groupby(row_data[row_column], dropna=False).count()
+            dual_feed_rows = powerload_counts.reindex(
+                row_values.index, fill_value=0
+            ).eq(2).tolist()
+            row_feed_traces: dict[str, dict[str, object]] = {}
+            for row_name, capacities in zip(row_values.index, row_feed_capacities):
+                if not capacities:
+                    continue
+                row_position = row_x.index(str(row_name))
+                for feed_number in sorted(
+                    capacities,
+                    key=lambda value: (0 if value.isdigit() else 1, int(value) if value.isdigit() else 0, value),
+                ):
+                    if not feed_number:
+                        continue
+                    trace_name = f"{row_name}{feed_number} capacity"
+                    row_feed_traces.setdefault(
+                        trace_name,
+                        {
+                            "row_label": str(row_name),
+                            "capacity": capacities[feed_number],
+                            "values": [None] * len(row_x),
+                        },
+                    )
+                    if dual_feed_rows[row_position]:
+                        row_feed_traces[trace_name]["values"][row_position] = capacities[feed_number]
+            if any(dual_feed_rows) and row_feed_traces:
+                first_dual_row = next((index for index, is_dual in enumerate(dual_feed_rows) if is_dual), 0)
+                for trace_name, trace_info in row_feed_traces.items():
+                    row_label = str(trace_info["row_label"])
+                    row_prefix = row_label.upper()
+                    color = (
+                        "#1f77b4"
+                        if row_prefix.startswith("A")
+                        else "#d62728" if row_prefix.startswith("B") else "#1f77b4"
+                    )
+                    trace_values = [None] * len(row_x)
+                    row_position = row_x.index(str(row_label)) if str(row_label) in row_x else -1
+                    if row_position >= 0 and dual_feed_rows[row_position]:
+                        trace_values[row_position] = trace_info["capacity"]
+                    elif any(dual_feed_rows):
+                        trace_values[first_dual_row] = trace_info["capacity"]
+                    figure.add_trace(
+                        go.Scatter(
+                            x=row_x,
+                            y=trace_values,
+                            mode="lines+markers",
+                            line={"color": color, "width": 2},
+                            marker={"color": color},
+                            name=trace_name,
+                            hovertemplate=f"{trace_name} for row %{{x}}: %{{y}}<extra></extra>",
+                        ),
+                        row=1,
+                        col=1,
+                    )
+            elif any(
+                    feed_number
+                    for capacities in row_feed_capacities
+                    for feed_number in capacities
+            ):
                 feed_numbers = sorted(
                     {
                         feed_number
@@ -156,7 +244,7 @@ def build_data_figure(
                                 x=row_x,
                                 y=feed_capacities,
                                 mode="lines",
-                                line={"color": "#16803c", "width": 2, "dash": "dot"},
+                                line={"color": "#d62728", "width": 2, "dash": "dot"},
                                 name=f"Feed {feed_number} capacity",
                                 hovertemplate=(
                                     f"Feed {feed_number} capacity for row "
@@ -178,27 +266,82 @@ def build_data_figure(
             rack_values = rack_data.groupby(rack_column, dropna=False).size()
         rack_x = rack_values.index.astype(str).tolist()
         rack_y = rack_values.values.tolist()
-        figure.add_trace(
-            go.Bar(
-                x=rack_x,
-                y=rack_y,
-                customdata=[["RACK", value] for value in rack_x],
-                name=f"{rack_metric} by rack",
-                marker_color="#d18a46",
-            ),
-            row=1,
-            col=2,
-        )
-        rpdu_capacity = _extract_rpdu_capacity(room_layout_data)
-        if rpdu_capacity is not None:
+        if power_column:
+            rack_feed_values: list[list[float]] = [[], []]
+            rack_feed_active = [False, False]
+            for rack_name in rack_values.index:
+                rack_assets = rack_data[rack_data[rack_column].eq(rack_name)]
+                if row_column:
+                    rack_rows = rack_assets.groupby(row_column, dropna=False)
+                    row_loads = (
+                        (row_name, float(row_assets[power_column].sum()))
+                        for row_name, row_assets in rack_rows
+                    )
+                else:
+                    row_loads = [(None, float(rack_values.loc[rack_name]))]
+                feed_loads = [0.0, 0.0]
+                for row_name, powerload in row_loads:
+                    feed_state = _get_feed_state(rack_feeds, row_name)
+                    active_feed_count = sum(feed_state)
+                    for feed_index, enabled in enumerate(feed_state):
+                        if enabled and active_feed_count:
+                            feed_loads[feed_index] += powerload / active_feed_count
+                            rack_feed_active[feed_index] = True
+                for feed_index in range(2):
+                    rack_feed_values[feed_index].append(feed_loads[feed_index])
+
+            for feed_index, (feed_name, color) in enumerate(
+                (
+                    ("Feed 1 powerload", "#1f77b4"),
+                    ("Feed 2 powerload", "#d62728"),
+                )
+            ):
+                figure.add_trace(
+                    go.Bar(
+                        x=rack_x,
+                        y=rack_feed_values[feed_index],
+                        customdata=[["RACK", value] for value in rack_x],
+                        name=feed_name,
+                        marker_color=color,
+                        visible=rack_feed_active[feed_index],
+                        hovertemplate=(
+                            f"{feed_name} for rack %{{x}}: %{{y}}<extra></extra>"
+                        ),
+                    ),
+                    row=1,
+                    col=2,
+                )
+            rpdu_capacity = _extract_rpdu_capacity(room_layout_data)
+            if (
+                rpdu_capacity is not None
+                and any(
+                    feed_active and powerload > rpdu_capacity
+                    for feed_values, feed_active in zip(
+                        rack_feed_values, rack_feed_active
+                    )
+                    for powerload in feed_values
+                )
+            ):
+                figure.add_trace(
+                    go.Scatter(
+                        x=rack_x,
+                        y=[rpdu_capacity] * len(rack_x),
+                        mode="lines",
+                        line={"color": "#d62728", "width": 2, "dash": "dot"},
+                        name="RPDU limit",
+                        hovertemplate="RPDU limit: %{y}<extra></extra>",
+                    ),
+                    row=1,
+                    col=2,
+                )
+        else:
             figure.add_trace(
-                go.Scatter(
+                go.Bar(
                     x=rack_x,
-                    y=[rpdu_capacity] * len(rack_x),
-                    mode="lines",
-                    line={"color": "#b42318", "width": 2, "dash": "dash"},
-                    name="RPDU capacity",
-                    hovertemplate="RPDU capacity: %{y}<extra></extra>",
+                    y=rack_y,
+                    customdata=[["RACK", value] for value in rack_x],
+                    name=f"{rack_metric} by rack",
+                    marker_color="#d18a46",
                 ),
                 row=1,
                 col=2,
@@ -207,14 +350,27 @@ def build_data_figure(
         figure.add_trace(go.Bar(x=[], y=[]), row=1, col=2)
 
     figure.update_xaxes(title_text="Row", row=1, col=1)
-    figure.update_yaxes(title_text="Power load" if power_column else "Assets", rangemode="tozero", row=1, col=1)
+    figure.update_yaxes(
+        title_text="Power load" if power_column else "Assets",
+        rangemode="tozero",
+        autorange=True,
+        row=1,
+        col=1,
+    )
     figure.update_xaxes(title_text="Rack", row=1, col=2)
-    figure.update_yaxes(title_text=rack_metric, rangemode="tozero", row=1, col=2)
+    figure.update_yaxes(
+        title_text=rack_metric,
+        rangemode="tozero",
+        autorange=True,
+        row=1,
+        col=2,
+    )
     figure.update_layout(
         title="Asset inventory and capacity",
         template="plotly_white",
         autosize=True,
         height=500,
+        barmode="group",
         showlegend=False,
         margin={"l": 45, "r": 35, "t": 90, "b": 45},
     )
@@ -230,7 +386,8 @@ def build_data_layout(
     pn.extension(
         "vtk",
         "plotly",
-        js_files={"ict-digital-twin-z-up": _VTK_INTERACTION_URL},
+        "tabulator",
+        js_files={"ict-digital-twin-z-up": VTK_INTERACTION_URL},
     )
     assets = asset_data.reset_index(drop=True)
     rack_keys = list(
@@ -310,6 +467,55 @@ def build_data_layout(
         sizing_mode="stretch_width",
         height=500,
     )
+    row_labels = (
+        assets.groupby("ROW", dropna=False).size().index.astype(str).tolist()
+        if "ROW" in assets
+        else ["All rows"]
+    )
+    row_feed_controls = {
+        row_label: (
+            pn.widgets.Checkbox(
+                name="Feed 1",
+                value=True,
+                styles={"color": "#1f77b4"},
+            ),
+            pn.widgets.Checkbox(
+                name="Feed 2",
+                value=True,
+                styles={"color": "#d62728"},
+            ),
+        )
+        for row_label in row_labels
+    }
+
+    def update_feed_load(_event: object) -> None:
+        enabled_feeds = {
+            row_label: (feed_1.value, feed_2.value)
+            for row_label, (feed_1, feed_2) in row_feed_controls.items()
+        }
+        plotly_pane.object = build_data_figure(
+            assets,
+            room_layout_data,
+            row_feeds=enabled_feeds,
+            rack_feeds=enabled_feeds,
+        )
+
+    for controls in row_feed_controls.values():
+        for feed_control in controls:
+            feed_control.param.watch(update_feed_load, "value")
+
+    feed_controls = pn.Column(
+        pn.pane.Markdown("Power feed toggle", margin=0),
+        *(
+            pn.Row(
+                pn.pane.Markdown(f"**Row {row_label}**", margin=0, width=90),
+                *controls,
+                sizing_mode="stretch_width",
+            )
+            for row_label, controls in row_feed_controls.items()
+        ),
+        sizing_mode="stretch_width",
+    )
     selected_asset_indices: set[int] = set()
 
     def update_selection(asset_indices: set[int], sync_inventory: bool = False) -> None:
@@ -384,6 +590,7 @@ def build_data_layout(
     inventory.param.watch(on_inventory_selection, "selection")
     dashboard = pn.Column(
         plotly_pane,
+        feed_controls,
         pn.Row(
             pn.pane.Markdown("Select a chart bar or inventory row to highlight it in 3D."),
             clear_selection,
@@ -408,11 +615,24 @@ def display_data(
 ) -> object:
     """Serve the shared visualization page and open it in the default browser."""
     layout = build_data_layout(asset_data, plotter, room_layout_data)
+    return serve_layout(layout, threaded=True)
+
+
+@overload
+def serve_layout(layout: object, threaded: Literal[True]) -> StoppableThread: ...
+
+
+@overload
+def serve_layout(layout: object, threaded: Literal[False] = False) -> Server: ...
+
+
+def serve_layout(layout: object, threaded: bool = False) -> StoppableThread | Server:
+    """Serve a Panel layout with the static assets required by the VTK view."""
     return pn.serve(
         layout,
         port=0,
         show=True,
-        threaded=True,
+        threaded=threaded,
         title="ICT Digital Twin",
         extra_patterns=[
             (

@@ -1,4 +1,14 @@
 # ICT Digital Twin tool 
+## Running the application
+
+Install the packages listed in `requirements.txt`, then run:
+
+```console
+python main.py
+```
+
+The application opens in your default browser. Upload the room YAML, asset CSV, and model-details CSV on the main page; the configuration controls and combined 3D and inventory views are available there.
+
 ## Input file requirements
 ### Room Layout (YAML)
 
@@ -20,6 +30,7 @@ power:
 For multiple feeds serving the same row, put the feed number in the row name.
 The row's total feed capacity is the sum of its feeds.  
 Individual feed capacities are shown as green dotted lines in the row powerload chart.
+The row powerload chart shows two grouped bars per row, and the rack chart shows two grouped bars per rack: half of the total powerload on Feed 1 (blue) and half on Feed 2 (red).
 
 ```yaml
 power:
@@ -43,5 +54,3 @@ A CSV file with the following columns:
 ```MODELNO  SIZE  POWERLOAD  AIRFLOW  DIRECTION  FUNCTION```
 
 This is the model detail database to provide device charactestics.
-
-

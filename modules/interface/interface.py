@@ -1,278 +1,260 @@
-"""Dear PyGui interface for loading data and opening the 3D view."""
+"""Panel web interface for loading data and configuring the 3D view."""
 from collections.abc import Mapping
 from pathlib import Path
-from tkinter import filedialog
-from typing import Any, TypedDict
 
-import dearpygui.dearpygui as dpg
 import pandas as pd
+import panel as pn
+from panel.io.server import StoppableThread
 
 import config
-from modules.datadisplay import display_data
+from modules.datadisplay import VTK_INTERACTION_URL, build_data_layout, serve_layout
 from modules.display import build_scene
 from modules.filemanager import asset_schema_validation_message, loadassets, loadroom
 
 
-class InterfaceState(TypedDict):
-	"""Loaded room and asset inputs used by the interface callbacks."""
-	room_layout: Mapping[str, object] | None
-	asset_path: str | None
-	model_path: str | None
-	asset_data: pd.DataFrame | None
+_SCENE_SETTINGS = {
+	"RACK_WIDTH",
+	"RACK_DEPTH",
+	"RACK_UNIT_HEIGHT",
+	"RACK_UNIT_COUNT",
+	"RACK_GAP",
+	"AISLE_WIDTH",
+	"DEVICE_WIDTH_RATIO",
+	"DEVICE_DEPTH_RATIO",
+	"BACKGROUND_COLOR",
+	"ROOM_COLOR",
+	"RACK_COLOR",
+	"DEVICE_COLOR",
+	"DEVICE_EDGE_COLOR",
+	"TEXT_COLOR",
+	"RACK_LINE_WIDTH",
+	"SHOW_DEVICE_EDGES",
+}
 
 
-def _stop_web_servers(servers: list[Any]) -> None:
-	"""Stop and clear the threaded visualization servers."""
-	for server in servers:
-		server.stop()
-		server.join()
-	servers.clear()
-
-
-def _shutdown_interface(servers: list[Any]) -> None:
-	"""Stop any active web servers and close the Dear PyGui context safely."""
-	_stop_web_servers(servers)
-	try:
-		if dpg.is_dearpygui_running():
-			dpg.stop_dearpygui()
-	except Exception:
-		pass
-	try:
-		dpg.destroy_context()
-	except Exception:
-		pass
-
-
-def run_interface() -> None:
-	"""Create and run the application interface."""
-	web_servers: list[Any] = []
-	state: InterfaceState = {
+def create_main_layout() -> pn.Column:
+	"""Build the upload, configuration, and visualization page."""
+	pn.config.respect_explicit_sizing = True
+	pn.extension(
+		"vtk",
+		"plotly",
+		"tabulator",
+		js_files={"ict-digital-twin-z-up": VTK_INTERACTION_URL},
+	)
+	state: dict[str, object] = {
 		"room_layout": None,
-		"asset_path": None,
-		"model_path": None,
 		"asset_data": None,
+		"plotter": None,
 	}
+	status = pn.pane.Alert(
+		"Upload the room layout and both CSV files to build the digital twin.",
+		alert_type="info",
+		sizing_mode="stretch_width",
+	)
+	visualization = pn.Column(
+		pn.pane.Markdown("### Visualization\nThe 3D view and inventory dashboard will appear here."),
+		sizing_mode="stretch_width",
+	)
 
-	def select_file(title: str, filetypes: list[tuple[str, str]]) -> str:
-		"""Open a native Tkinter file chooser and return the selected path."""
-		return filedialog.askopenfilename(title=title, filetypes=filetypes)
+	def set_status(message: str, alert_type: str = "info") -> None:
+		status.object = message
+		status.alert_type = alert_type
 
-	def set_status(message: str) -> None:
-		dpg.set_value("status_label", message)
+	def clear_visualization(message: str) -> None:
+		plotter = state["plotter"]
+		if plotter is not None:
+			plotter.close()
+			state["plotter"] = None
+		visualization.objects = [pn.pane.Markdown(message)]
 
-	def update_view_button() -> None:
-		ready = state["room_layout"] is not None and state["asset_data"] is not None
-		dpg.configure_item("view_button", enabled=ready)
-
-	def load_room_callback(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
-		file_path = select_file(
-			"Select room layout",
-			[("YAML files", "*.yaml"), ("YAML files", "*.yml")],
-		)
-		if not file_path:
+	def render_scene() -> None:
+		asset_data = state["asset_data"]
+		room_layout = state["room_layout"]
+		if not isinstance(asset_data, pd.DataFrame) or not isinstance(room_layout, Mapping):
 			return
+		new_plotter = None
 		try:
-			room_layout = loadroom(file_path)
-			if room_layout is None:
-				raise ValueError("The selected YAML file is empty.")
+			new_plotter = build_scene(asset_data, room_layout)
+			data_layout = build_data_layout(asset_data, new_plotter, room_layout)
 		except Exception as error:
-			set_status(f"Could not load room layout: {error}")
+			if new_plotter is not None:
+				new_plotter.close()
+			set_status(f"Could not build the visualization: {error}", "danger")
 			return
-		state["room_layout"] = room_layout
-		dpg.set_value("room_file_label", Path(file_path).name)
-		set_status("Room layout loaded.")
-		update_view_button()
+		previous_plotter = state["plotter"]
+		state["plotter"] = new_plotter
+		visualization.objects = [data_layout]
+		if previous_plotter is not None:
+			previous_plotter.close()
 
-	def load_asset_callback(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
-		file_path = select_file(
-			"Select asset data CSV",
-			[("CSV files", "*.csv"), ("All files", "*.*")],
-		)
-		if not file_path:
-			return
-		state["asset_path"] = file_path
-		state["model_path"] = None
-		state["asset_data"] = None
-		dpg.set_value("asset_file_label", Path(file_path).name)
-		dpg.set_value("model_file_label", "Not selected")
-		dpg.configure_item("model_button", enabled=True)
-		set_status("Asset CSV selected. Select the model-details CSV to continue.")
-		update_view_button()
-
-	def load_model_callback(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
-		file_path = select_file(
-			"Select model details CSV",
-			[("CSV files", "*.csv"), ("All files", "*.*")],
-		)
-		if not file_path:
-			return
-		if state["asset_path"] is None:
-			set_status("Select the asset CSV first.")
-			return
-		state["model_path"] = file_path
-		try:
-			asset_data = loadassets(state["asset_path"], file_path)
-		except Exception as error:
-			state["asset_data"] = None
-			set_status(f"Could not load asset data: {error}")
-			update_view_button()
-			return
-		if asset_data is None:
-			set_status("Asset data was not loaded.")
-			return
-		state["asset_data"] = asset_data
-		dpg.set_value("model_file_label", Path(file_path).name)
-		set_status(f"Loaded {len(asset_data)} assets.\n{asset_schema_validation_message(asset_data)}")
-		update_view_button()
-
-	def update_config_value(_sender: int, value: object, setting: str) -> None:
+	def update_setting(event: object, setting: str) -> None:
+		value = event.new
 		if setting == "OUTPUT_DIR":
-			if isinstance(value, str):
-				config.OUTPUT_DIR = Path(value)
-		elif setting == "CAMERA_UP":
-			if isinstance(value, (tuple, list)):
-				setattr(config, setting, tuple(float(component) for component in value))
+			config.OUTPUT_DIR = Path(value)
 		else:
 			setattr(config, setting, value)
 		if setting in ("RACK_UNIT_COUNT", "RACK_UNIT_HEIGHT"):
 			config.RACK_HEIGHT = config.RACK_UNIT_COUNT * config.RACK_UNIT_HEIGHT
-			dpg.set_value("rack_height_value", f"{config.RACK_HEIGHT:.3f} m")
+			rack_height.object = f"Rack height: {config.RACK_HEIGHT:.3f} m"
+		if setting in _SCENE_SETTINGS:
+			render_scene()
 
-	def update_theme(_sender: int, value: str, _user_data: object = None) -> None:
-		import pyvista as pv
-		config.PYVISTA_THEME = getattr(pv.themes, value)
+	def watch_setting(widget: object, setting: str) -> None:
+		widget.param.watch(lambda event: update_setting(event, setting), "value")
 
-	def update_color(_sender: int, value: list[int], setting: str | tuple[str, str]) -> None:
-		color = "#" + "".join(f"{round(channel):02x}" for channel in value[:3])
-		if isinstance(setting, tuple):
-			config.FUNCTION_COLORS[setting[1]] = color
-		else:
-			setattr(config, setting, color)
+	def update_function_color(event: object, category: str) -> None:
+		config.FUNCTION_COLORS[category] = event.new
+		render_scene()
 
-	def color_value(color: str) -> tuple[int, int, int, int]:
-		return tuple(int(color[index:index + 2], 16) for index in (1, 3, 5)) + (255,)
+	room_upload = pn.widgets.FileInput(label="Room layout YAML", accept=".yaml,.yml")
+	asset_upload = pn.widgets.FileInput(label="Asset data CSV", accept=".csv")
+	model_upload = pn.widgets.FileInput(label="Model details CSV", accept=".csv")
 
-	def add_float_option(
-		label: str,
-		setting: str,
-		minimum: float = 0.0,
-		maximum: float = 100.0,
-		step: float = 0.01,
-	) -> None:
-		dpg.add_input_float(
-			label=label,
-			default_value=getattr(config, setting),
-			min_value=minimum,
-			max_value=maximum,
-			min_clamped=True,
-			max_clamped=True,
-			step=step,
-			callback=update_config_value,
-			user_data=setting,
-		)
-
-	def add_color_option(label: str, setting: str | tuple[str, str], color: str) -> None:
-		dpg.add_color_edit(
-			label=label,
-			default_value=color_value(color),
-			no_alpha=True,
-			callback=update_color,
-			user_data=setting,
-		)
-
-	def open_view(_sender: int, _app_data: object, _user_data: object = None) -> None:
-		asset_data = state["asset_data"]
-		room_layout = state["room_layout"]
-		if asset_data is None or room_layout is None:
+	def load_room(event: object) -> None:
+		if not event.new:
+			state["room_layout"] = None
+			clear_visualization("Upload all three files to show the visualization.")
 			return
 		try:
-			plotter = build_scene(asset_data, room_layout)
-			web_servers.append(display_data(asset_data, plotter, room_layout))
+			room_layout = loadroom(event.new)
+			if not isinstance(room_layout, Mapping):
+				raise ValueError("The selected YAML file must contain a mapping.")
 		except Exception as error:
-			set_status(f"Could not open combined view: {error}")
+			state["room_layout"] = None
+			clear_visualization("Upload all three files to show the visualization.")
+			set_status(f"Could not load room layout: {error}", "danger")
+			return
+		state["room_layout"] = room_layout
+		set_status(f"Loaded room layout: {room_upload.filename}", "success")
+		render_scene()
 
-	def close_viewport(_sender: int = 0, _app_data: object = None, _user_data: object = None) -> None:
-		_shutdown_interface(web_servers)
+	def load_assets(_event: object) -> None:
+		if not asset_upload.value or not model_upload.value:
+			state["asset_data"] = None
+			clear_visualization("Upload all three files to show the visualization.")
+			if asset_upload.value:
+				set_status("Asset CSV loaded. Add the model-details CSV to continue.")
+			return
+		try:
+			asset_data = loadassets(asset_upload.value, model_upload.value)
+			if asset_data is None:
+				raise ValueError("Asset data was not loaded.")
+		except Exception as error:
+			state["asset_data"] = None
+			clear_visualization("Upload all three files to show the visualization.")
+			set_status(f"Could not load asset data: {error}", "danger")
+			return
+		state["asset_data"] = asset_data
+		validation = asset_schema_validation_message(asset_data)
+		set_status(
+			f"Loaded {len(asset_data)} assets from {asset_upload.filename} and {model_upload.filename}. {validation}",
+			"success" if validation.endswith("PASSED") else "warning",
+		)
+		render_scene()
 
-	try:
-		dpg.create_context()
-		dpg.configure_app(manual_callback_management=True)
-		with dpg.window(label="ICT Digital Twin", tag="main_window", width=640, height=720):
-			dpg.add_text("Load the room layout and both data files")
-			dpg.add_separator()
-			dpg.add_button(label="Load room layout YAML", callback=load_room_callback, width=220)
-			dpg.add_text("Not selected", tag="room_file_label")
-			dpg.add_spacer(height=6)
-			dpg.add_button(label="Load asset data CSV", callback=load_asset_callback, width=220)
-			dpg.add_text("Not selected", tag="asset_file_label")
-			dpg.add_spacer(height=6)
-			dpg.add_button(label="Load model details CSV", tag="model_button", enabled=False, callback=load_model_callback, width=220)
-			dpg.add_text("Not selected", tag="model_file_label")
-			dpg.add_separator()
-			dpg.add_button(label="Open 3D view", tag="view_button", enabled=False, callback=open_view, width=220)
-			dpg.add_button(label="Configuration", callback=lambda: dpg.show_item("config_window"), width=220)
-			dpg.add_text("Select all three files to enable the 3D view.", tag="status_label", wrap=490)
+	room_upload.param.watch(load_room, "value")
+	asset_upload.param.watch(load_assets, "value")
+	model_upload.param.watch(load_assets, "value")
 
-		with dpg.window(label="Configuration", tag="config_window", width=640, height=720, show=False, modal=True):
-			with dpg.collapsing_header(label="Files and layout", default_open=True):
-				dpg.add_input_text(
-					label="Output directory",
-					default_value=str(config.OUTPUT_DIR),
-					callback=update_config_value,
-					user_data="OUTPUT_DIR",
-				)
-				for label, setting in (
-					("Rack width (m)", "RACK_WIDTH"),
-					("Rack depth (m)", "RACK_DEPTH"),
-					("Rack-unit height (m)", "RACK_UNIT_HEIGHT"),
-					("Rack gap (m)", "RACK_GAP"),
-					("Aisle width (m)", "AISLE_WIDTH"),
-					("Device width ratio", "DEVICE_WIDTH_RATIO"),
-					("Device depth ratio", "DEVICE_DEPTH_RATIO"),
-				):
-					add_float_option(label, setting, maximum=10.0)
-				dpg.add_input_int(
-					label="Rack-unit count",
-					default_value=config.RACK_UNIT_COUNT,
-					min_value=1,
-					max_value=100,
-					min_clamped=True,
-					max_clamped=True,
-					callback=update_config_value,
-					user_data="RACK_UNIT_COUNT",
-				)
-				dpg.add_text(f"Rack height: {config.RACK_HEIGHT:.3f} m", tag="rack_height_value")
+	output_directory = pn.widgets.TextInput(
+		label="Output directory",
+		value=str(config.OUTPUT_DIR),
+	)
+	watch_setting(output_directory, "OUTPUT_DIR")
+	layout_controls = [output_directory]
+	for label, setting in (
+		("Rack width (m)", "RACK_WIDTH"),
+		("Rack depth (m)", "RACK_DEPTH"),
+		("Rack-unit height (m)", "RACK_UNIT_HEIGHT"),
+		("Rack gap (m)", "RACK_GAP"),
+		("Aisle width (m)", "AISLE_WIDTH"),
+		("Device width ratio", "DEVICE_WIDTH_RATIO"),
+		("Device depth ratio", "DEVICE_DEPTH_RATIO"),
+	):
+		control = pn.widgets.FloatInput(
+			label=label,
+			value=getattr(config, setting),
+			start=0,
+			end=10,
+			step=0.01,
+		)
+		watch_setting(control, setting)
+		layout_controls.append(control)
 
-			with dpg.collapsing_header(label="Colors", default_open=True):
-				for label, setting in (
-					("Background", "BACKGROUND_COLOR"),
-					("Room", "ROOM_COLOR"),
-					("Rack", "RACK_COLOR"),
-					("Device", "DEVICE_COLOR"),
-					("Device edges", "DEVICE_EDGE_COLOR"),
-					("Text", "TEXT_COLOR"),
-				):
-					add_color_option(label, setting, getattr(config, setting))
-				add_float_option("Rack line width", "RACK_LINE_WIDTH", maximum=10.0)
-				for category, color in config.FUNCTION_COLORS.items():
-					add_color_option(category, ("FUNCTION_COLORS", category), color)
-				dpg.add_checkbox(
-					label="Show device edges",
-					default_value=config.SHOW_DEVICE_EDGES,
-					callback=update_config_value,
-					user_data="SHOW_DEVICE_EDGES",
-				)
+	rack_count = pn.widgets.IntInput(
+		label="Rack-unit count",
+		value=config.RACK_UNIT_COUNT,
+		start=1,
+		end=100,
+		step=1,
+	)
+	watch_setting(rack_count, "RACK_UNIT_COUNT")
+	layout_controls.append(rack_count)
+	rack_height = pn.pane.Markdown(f"Rack height: {config.RACK_HEIGHT:.3f} m")
+	layout_controls.append(rack_height)
 
-			dpg.add_button(label="Close", callback=lambda: dpg.hide_item("config_window"), width=100)
+	color_controls = []
+	for label, setting in (
+		("Background", "BACKGROUND_COLOR"),
+		("Room", "ROOM_COLOR"),
+		("Rack", "RACK_COLOR"),
+		("Device", "DEVICE_COLOR"),
+		("Device edges", "DEVICE_EDGE_COLOR"),
+		("Text", "TEXT_COLOR"),
+	):
+		control = pn.widgets.ColorPicker(label=label, value=getattr(config, setting))
+		watch_setting(control, setting)
+		color_controls.append(control)
 
-		dpg.create_viewport(title="ICT Digital Twin", width=640, height=720)
-		dpg.set_exit_callback(close_viewport)
-		dpg.setup_dearpygui()
-		dpg.show_viewport()
-		dpg.set_primary_window("main_window", True)
-		while dpg.is_dearpygui_running():
-			callbacks = dpg.get_callback_queue()
-			dpg.run_callbacks(callbacks)
-			dpg.render_dearpygui_frame()
-	finally:
-		_shutdown_interface(web_servers)
+	rack_line_width = pn.widgets.FloatInput(
+		label="Rack line width",
+		value=config.RACK_LINE_WIDTH,
+		start=0,
+		end=10,
+		step=0.5,
+	)
+	watch_setting(rack_line_width, "RACK_LINE_WIDTH")
+	color_controls.append(rack_line_width)
+	for category, color in config.FUNCTION_COLORS.items():
+		control = pn.widgets.ColorPicker(label=f"{category} function", value=color)
+		control.param.watch(lambda event, key=category: update_function_color(event, key), "value")
+		color_controls.append(control)
+
+	show_device_edges = pn.widgets.Checkbox(
+		label="Show device edges",
+		value=config.SHOW_DEVICE_EDGES,
+	)
+	watch_setting(show_device_edges, "SHOW_DEVICE_EDGES")
+	color_controls.append(show_device_edges)
+
+	configuration = pn.Accordion(
+		("Files and layout", pn.Column(*layout_controls, sizing_mode="stretch_width")),
+		("Colors", pn.Column(*color_controls, sizing_mode="stretch_width")),
+		active=[],
+		sizing_mode="stretch_width",
+	)
+	uploads = pn.Row(room_upload, asset_upload, model_upload, sizing_mode="stretch_width")
+	return pn.Column(
+		pn.pane.Markdown("# ICT Digital Twin\nRoom layout and equipment configuration"),
+		pn.pane.Markdown("## Input files"),
+		uploads,
+		status,
+		visualization,
+		pn.pane.Markdown("## Configuration"),
+		configuration,
+		sizing_mode="stretch_width",
+	)
+
+
+def run_interface() -> None:
+	"""Start the single-page web application in the default browser."""
+	server_thread: StoppableThread | None = None
+
+	def stop_server(_session_context: object) -> None:
+		if server_thread is not None:
+			server_thread.stop()
+
+	layout = create_main_layout()
+	pn.state.on_session_destroyed(stop_server)
+	server_thread = serve_layout(layout, threaded=True)
+	server_thread.join()

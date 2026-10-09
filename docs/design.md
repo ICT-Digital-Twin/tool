@@ -88,6 +88,13 @@ Use left click to rotate the view.  Use mouse wheel/right click to zoom.
 
 Use shift-left click to pan.
 
+The row and rack powerload charts have separate Feed 1 and Feed 2 toggles for
+each displayed row, grouped under "Power feed toggle". Feed 1 is blue and
+Feed 2 is red. Disabling one feed moves that row's full load to its remaining
+feed on both charts. Capacity reference lines in the row chart are red and
+dotted; the rack chart shows the configured RPDU capacity as a red dotted line
+when an active feed exceeds it.
+
 Mouseover any device to view asset data.
 
 

@@ -2,8 +2,8 @@
 This will load a yaml layout file and csv asset data files.
 """
 from pathlib import Path
+from io import BytesIO
 
-from tkinter import filedialog
 import pandas as pd
 import yaml
 
@@ -29,50 +29,29 @@ def asset_schema_validation_message(asset_data):
     return "Schema validation FAILED"
 
 
-def loadroom(file_path=None):
-    """Function to load a yaml file for room layout."""
-    room_layout_file = file_path
-    if room_layout_file is None:
-        print("Select YAML file for room layout")
-        room_layout_file = filedialog.askopenfilename(
-            title="Select a file",
-            filetypes=[("YAML files", "*.yaml"), ("YAML files", "*.yml")],
-        )
-
-    if not room_layout_file:
+def loadroom(file_data=None):
+    """Load room layout YAML from a path or uploaded file bytes."""
+    if not file_data:
         return None
 
-    with open(room_layout_file, "r", encoding="utf-8") as file:
-        room_layout_data = yaml.safe_load(file)
+    if isinstance(file_data, (bytes, bytearray)):
+        room_layout_data = yaml.safe_load(file_data)
+    else:
+        with open(file_data, "r", encoding="utf-8") as file:
+            room_layout_data = yaml.safe_load(file)
 
     return room_layout_data
 
 
 def loadassets(asset_data_file=None, model_data_file=None):
-    """Function to load asset data from CSV files."""
-    if asset_data_file is None:
-        print("Select CSV file for asset data")
-        asset_data_file = filedialog.askopenfilename(
-            title="Select Asset Data CSV",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-
-    if not asset_data_file:
+    """Load and join asset CSV data from paths or uploaded file bytes."""
+    if not asset_data_file or not model_data_file:
         return None
 
-    asset_data = pd.read_csv(asset_data_file)
-
-    if model_data_file is None:
-        print("Select CSV file for model details")
-        model_data_file = filedialog.askopenfilename(
-            title="Select Model Details CSV",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-
-    if not model_data_file:
-        return None
-
-    model_data = pd.read_csv(model_data_file)
+    asset_source = BytesIO(asset_data_file) if isinstance(asset_data_file, (bytes, bytearray)) else asset_data_file
+    model_source = BytesIO(model_data_file) if isinstance(model_data_file, (bytes, bytearray)) else model_data_file
+    asset_data = pd.read_csv(asset_source)
+    model_data = pd.read_csv(model_source)
     asset_data = asset_data.merge(model_data, on="MODELNO", how="left")
 
     return asset_data.sort_values(
