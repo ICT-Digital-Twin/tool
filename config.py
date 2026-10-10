@@ -1,5 +1,5 @@
 """
-Variables for paths and PyVista theme.
+Variables for paths, PyVista theme, timezone
 """
 from pathlib import Path
 
@@ -8,6 +8,9 @@ PYVISTA_THEME = None
 
 OUTPUT_DIR = Path("data/output")
 SNMP_REFRESH_SECONDS = 30
+SNMP_TEMPERATURE_GREEN_MIN_C = 0
+SNMP_TEMPERATURE_YELLOW_MIN_C = 38
+SNMP_TEMPERATURE_RED_MIN_C = 70
 
 RACK_WIDTH = 0.8
 RACK_DEPTH = 1.0

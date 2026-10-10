@@ -1,6 +1,4 @@
-"""
-ICT Digital Twin Tool 2026
-"""
+"""ICT Digital Twin Tool 2026"""
 import config
 from modules.filemanager import checkoutputdir
 from modules.interface import run_interface

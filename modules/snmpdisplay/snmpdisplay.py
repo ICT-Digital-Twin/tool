@@ -40,11 +40,22 @@ _SERIAL_OIDS = (
    (("sanswitch",), "1.3.6.1.4.1.1588.2.1.1.1.3.0"),
    (("coreswitch",), "1.3.6.1.4.1.6027.3.1.1.1.3.0"),
 )
+_TEMPERATURE_OIDS = (
+   (
+       ("computenode", "virt", "db", "app", "kube", "server", "ainode"),
+       "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
+   ),
+   (("tor",), "1.3.6.1.4.1.9.9.91.1.1.1.1.4.1"),
+   (("sancontroller",), "1.3.6.1.4.1.674.11000.1.5.1.1.0"),
+   (("coreswitch",), "1.3.6.1.4.1.6027.3.1.1.1.5.0"),
+   (("sanswitch",), "1.3.6.1.4.1.1588.2.1.1.1.5.0"),
+)
 _SIMULATOR_ADDRESS = "127.0.0.1"
 _SIMULATOR_PORT = 1161
 _RESULT_COLUMNS = (
    "Host",
    "Status",
+   "Temperature",
    "Uptime",
    "Description",
    "Timestamp",
@@ -52,12 +63,40 @@ _RESULT_COLUMNS = (
 )
 
 
-def _serial_oid_for_device(device_name: str) -> str | None:
-   """Select the vendor serial OID used by the SNMP simulator."""
-   for matchers, oid in _SERIAL_OIDS:
-       if any(matcher in device_name for matcher in matchers):
+def _device_oid_for_device(device_name: str, oid_map: tuple[tuple[tuple[str, ...], str], ...]) -> str | None:
+   """Select the vendor-specific SNMP OID used by the simulator for a device family."""
+   normalized_name = device_name.lower()
+   for matchers, oid in oid_map:
+       if any(matcher in normalized_name for matcher in matchers):
            return oid
    return None
+
+
+def _serial_oid_for_device(device_name: str) -> str | None:
+   """Select the vendor serial OID used by the SNMP simulator."""
+   return _device_oid_for_device(device_name, _SERIAL_OIDS)
+
+
+def _temperature_oid_for_device(device_name: str) -> str | None:
+   """Select the vendor temperature OID used by the SNMP simulator."""
+   return _device_oid_for_device(device_name, _TEMPERATURE_OIDS)
+
+
+def _parse_temperature_celsius(value: str) -> float | None:
+   """Parse an SNMP temperature reading already reported in Celsius."""
+   try:
+       return float(value)
+   except (TypeError, ValueError):
+       return None
+
+
+def _format_uptime(seconds: object) -> str:
+   """Format an uptime value in whole hours and minutes."""
+   if seconds is None or pd.isna(seconds):
+       return ""
+
+   total_minutes = int(float(seconds) // 60)
+   return f"{total_minutes // 60}h {total_minutes % 60}m"
 
 
 async def query_device(
@@ -66,9 +105,14 @@ async def query_device(
    community: str,
    target: UdpTransportTarget,
 ) -> dict[str, object]:
-   """Fetch simulator system details and the device-specific serial number."""
+   """Fetch simulator system details and device-specific serial and temperature."""
    serial_oid = _serial_oid_for_device(device_name.lower())
-   requested_oids = (*_SYSTEM_OIDS, *((serial_oid,) if serial_oid else ()))
+   temperature_oid = _temperature_oid_for_device(device_name.lower())
+   requested_oids = (
+       *_SYSTEM_OIDS,
+       *((serial_oid,) if serial_oid else ()),
+       *((temperature_oid,) if temperature_oid else ()),
+   )
    error, status, index, var_binds = await get_cmd(
        engine,
        CommunityData(community, mpModel=1),
@@ -92,6 +136,12 @@ async def query_device(
        value.prettyPrint() for _, value in var_binds[:3]
    )
    serial = var_binds[3][1].prettyPrint() if serial_oid else "N/A"
+   temperature_value = None
+   if temperature_oid:
+       temperature_index = 4 if serial_oid else 3
+       temperature_value = _parse_temperature_celsius(
+           var_binds[temperature_index][1].prettyPrint()
+       )
    try:
        uptime_seconds = int(uptime_ticks) / 100
    except ValueError as error:
@@ -101,6 +151,8 @@ async def query_device(
        "System name": system_name,
        "Serial": serial,
        "Description": description,
+       "Temperature (°C)": temperature_value,
+       "Temperature": temperature_value,
        "Uptime (seconds)": uptime_seconds,
        "Status": "OK",
    }
@@ -159,33 +211,52 @@ async def poll_snmp_assets(asset_data: pd.DataFrame) -> list[dict[str, object]]:
 def build_snmp_figure(
     samples: Sequence[Mapping[str, object]] = (),
 ) -> go.Figure:
-    """Build an uptime time series from successful SNMP poll results."""
+    """Build a temperature time series from successful SNMP poll results."""
     figure = go.Figure()
     hosts: dict[str, list[tuple[object, object]]] = {}
+    sample_keys = {key for sample in samples for key in sample.keys()}
+    has_temperature = any(
+        key in sample_keys for key in ("Temperature", "Temperature (°C)")
+    )
+    has_uptime = any(key in sample_keys for key in ("Uptime", "Uptime (seconds)"))
+    title = "SNMP System Temperature" if has_temperature or not has_uptime else "SNMP System Uptime"
+    yaxis_title = "Temperature (°C)" if has_temperature or not has_uptime else "Uptime (seconds)"
+    empty_text = (
+        "Poll SNMP devices to collect system temperature"
+        if has_temperature or not has_uptime
+        else "Poll SNMP devices to collect system uptime"
+    )
+
     for sample in samples:
         host = sample.get("Host")
         timestamp = sample.get("Timestamp")
-        uptime = sample.get("Uptime (seconds)")
+        temperature = sample.get("Temperature (°C)")
+        if temperature is None:
+            temperature = sample.get("Temperature")
+        if temperature is None and (not has_temperature or has_uptime):
+            temperature = sample.get("Uptime (seconds)")
+        if temperature is None:
+            temperature = sample.get("Uptime")
         if (
             sample.get("Status") == "OK"
             and isinstance(host, str)
             and timestamp is not None
-            and isinstance(uptime, (int, float))
+            and isinstance(temperature, (int, float))
         ):
-            hosts.setdefault(host, []).append((timestamp, uptime))
+            hosts.setdefault(host, []).append((timestamp, temperature))
 
     for host, points in hosts.items():
         figure.add_trace(
             go.Scatter(
                 x=[timestamp for timestamp, _ in points],
-                y=[uptime for _, uptime in points],
+                y=[temperature for _, temperature in points],
                 mode="lines+markers",
                 name=host,
             )
         )
     if not hosts:
         figure.add_annotation(
-            text="Poll SNMP devices to collect system uptime",
+            text=empty_text,
             x=0.5,
             y=0.5,
             xref="paper",
@@ -194,12 +265,12 @@ def build_snmp_figure(
         )
 
     figure.update_layout(
-        title="SNMP System Uptime",
+        title=title,
         template="plotly_white",
         autosize=True,
         height=500,
         xaxis_title="Poll time",
-        yaxis_title="Uptime (seconds)",
+        yaxis_title=yaxis_title,
         margin={"l": 55, "r": 30, "t": 75, "b": 50},
     )
     return figure
@@ -214,10 +285,10 @@ def build_snmp_layout(
     assets = asset_data.copy() if isinstance(asset_data, pd.DataFrame) else pd.DataFrame()
     history: list[dict[str, object]] = []
     polling = {"active": False}
+    status_revision = {"value": 0}
     status = pn.pane.Alert(
         f"SNMP devices are polled every {config.SNMP_REFRESH_SECONDS} seconds "
-        "while this view is open. "
-        "You can also poll immediately using the button.",
+        "while this view is open.",
         alert_type="info",
         sizing_mode="stretch_width",
     )
@@ -234,23 +305,29 @@ def build_snmp_layout(
         sizing_mode="stretch_width",
         height=500,
     )
-    poll_button = pn.widgets.Button(
-        label="Poll SNMP devices",
+    refresh_button = pn.widgets.Button(
+        label="Refresh SNMP devices",
         color="primary",
         disabled=assets.empty or not {"SNMP", "SNMP_COMMUNITY"}.issubset(assets.columns),
+        visible=False,
     )
+
+    def set_status(message: str, alert_type: str) -> None:
+        status_revision["value"] += 1
+        status.object = message
+        status.alert_type = alert_type
+        status.visible = True
+        refresh_button.visible = False
 
     def finish_poll(
         rows: list[dict[str, object]] | None,
         error: Exception | None,
     ) -> None:
         polling["active"] = False
-        poll_button.disabled = False
         if error is not None:
             if on_results is not None:
                 on_results([{"Status": str(error)} for _ in range(len(assets))])
-            status.object = f"SNMP polling failed: {error}"
-            status.alert_type = "danger"
+            set_status(f"SNMP polling failed: {error}", "danger")
             return
         if rows is None:
             raise RuntimeError("SNMP polling completed without results or an error.")
@@ -259,29 +336,57 @@ def build_snmp_layout(
         for row in rows:
             row["Timestamp"] = polled_at
         history.extend(rows)
-        results.value = (
-            pd.DataFrame(rows)
-            .rename(columns={"Uptime (seconds)": "Uptime"})
-            .reindex(columns=_RESULT_COLUMNS)
+        results_df = pd.DataFrame(rows).copy()
+        if "Temperature (°C)" in results_df.columns:
+            celsius_values = results_df["Temperature (°C)"]
+            if "Temperature" in results_df.columns:
+                celsius_values = celsius_values.combine_first(
+                    results_df["Temperature"]
+                )
+            results_df["Temperature"] = celsius_values
+        if "Uptime (seconds)" in results_df.columns:
+            results_df["Uptime"] = results_df["Uptime (seconds)"].map(
+                _format_uptime
+            )
+        results_df["Timestamp"] = pd.to_datetime(
+            results_df["Timestamp"], utc=True, errors="raise"
+        ).dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        results_df = results_df.reindex(columns=_RESULT_COLUMNS)
+        results_df["Temperature"] = results_df["Temperature"].astype(object).where(
+            results_df["Temperature"].notna(),
+            "N/A",
         )
+        results.value = results_df
         chart.object = build_snmp_figure(history)
         if on_results is not None:
             on_results(rows)
         failures = sum(row.get("Status") != "OK" for row in rows)
-        status.object = (
+        message = (
             f"Polled {len(rows)} device(s); {failures} device(s) reported an error."
             if failures
             else f"Successfully polled {len(rows)} device(s)."
         )
-        status.alert_type = "warning" if failures else "success"
+        alert_type = "warning" if failures else "success"
+        set_status(message, alert_type)
+        if not failures:
+            revision = status_revision["value"]
+            document = pn.state.curdoc
+            if document is not None:
+                def clear_status() -> None:
+                    if status_revision["value"] == revision:
+                        status.visible = False
+                        refresh_button.visible = True
+
+                document.add_timeout_callback(clear_status, 5000)
 
     def on_poll(_event: object) -> None:
-        if polling["active"] or poll_button.disabled:
+        if polling["active"] or assets.empty or not {
+            "SNMP",
+            "SNMP_COMMUNITY",
+        }.issubset(assets.columns):
             return
         polling["active"] = True
-        poll_button.disabled = True
-        status.object = "Polling SNMP devices..."
-        status.alert_type = "info"
+        set_status("Polling SNMP devices...", "info")
         document = pn.state.curdoc
 
         def worker() -> None:
@@ -298,11 +403,11 @@ def build_snmp_layout(
 
         threading.Thread(target=worker, daemon=True).start()
 
-    poll_button.on_click(on_poll)
+    refresh_button.on_click(on_poll)
     snmp_panel = pn.Column(
         pn.pane.Markdown("## SNMP system data"),
         status,
-        poll_button,
+        refresh_button,
         results,
         chart,
         sizing_mode="stretch_both",

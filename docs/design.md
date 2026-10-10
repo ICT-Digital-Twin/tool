@@ -91,9 +91,20 @@ each asset's `SNMP` name, lowercased, and the room name as the community string
 prefix (for example, `DemoColo-01/tora01a`). The PyVista view uses green for
 successful (`OK`) polls, yellow for an explicit `Warning` status, and red for
 other statuses; switching back to Asset data restores the asset-function
-colors. It queries
-`sysDescr`, `sysUpTime`, and `sysName`, plus the vendor-specific serial OID
-selected by the device-name prefix, matching `sweep.py`.
+colors. It queries system metadata and plots the device's reported temperature
+trend in the SNMP panel, plus the vendor-specific serial OID selected by the
+device-name prefix, matching `sweep.py`. Temperature readings use the Dell
+PowerEdge sensor OID `1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1` for server
+families, the Cisco entity-sensor OID
+`1.3.6.1.4.1.9.9.91.1.1.1.1.4.1` for ToR switches, the PowerStore scalar
+`1.3.6.1.4.1.674.11000.1.5.1.1.0` for SAN controllers, the Dell core-switch
+scalar `1.3.6.1.4.1.6027.3.1.1.1.5.0`, and the Brocade SAN-switch scalar
+`1.3.6.1.4.1.1588.2.1.1.1.5.0`. Temperature values are already in degrees
+Celsius and are displayed without unit conversion. The simulator returned
+`35` for both devices in each of these families during validation. The standard
+`sysUpTime.0` value is TimeTicks (hundredths of a second), so the poller
+divides it by 100 to report seconds. A missing sensor reading stays missing
+instead of being replaced with system uptime.
 
 ### Display
 

@@ -1014,12 +1014,23 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(list(figure.data[0].y), [120])
         self.assertEqual(figure.layout.yaxis.title.text, "Uptime (seconds)")
         self.assertIsInstance(layout, pn.Column)
-        self.assertEqual(layout[2].label, "Poll SNMP devices")
-        self.assertFalse(layout[2].disabled)
+        self.assertEqual(len(layout), 5)
+        self.assertIsInstance(layout[1], pn.pane.Alert)
+        self.assertIsInstance(layout[2], pn.widgets.Button)
+        self.assertEqual(layout[2].label, "Refresh SNMP devices")
+        self.assertFalse(layout[2].visible)
         self.assertIsInstance(layout[3], pn.widgets.Tabulator)
         self.assertEqual(
             list(layout[3].value.columns),
-            ["Host", "Status", "Uptime", "Description", "Timestamp", "Serial"],
+            [
+                "Host",
+                "Status",
+                "Temperature",
+                "Uptime",
+                "Description",
+                "Timestamp",
+                "Serial",
+            ],
         )
         self.assertTrue(layout[3].show_index)
         self.assertEqual(
@@ -1027,6 +1038,78 @@ class ProjectValidationTests(unittest.TestCase):
             {"Description": 150, "Serial": 100},
         )
         self.assertIsInstance(layout[4], pn.pane.Plotly)
+
+    def test_snmp_results_format_uptime_and_validate_timestamp(self):
+        from datetime import datetime
+        from unittest.mock import AsyncMock
+
+        from modules.snmpdisplay import build_snmp_layout
+
+        class ImmediateThread:
+            def __init__(self, target, daemon):
+                self.target = target
+                self.daemon = daemon
+
+            def start(self):
+                self.target()
+
+        rows = [
+            {
+                "Host": "server-01",
+                "Status": "OK",
+                "Temperature (°C)": 35,
+                "Temperature": 35,
+                "Uptime (seconds)": 3723,
+            },
+            {
+                "Host": "server-02",
+                "Status": "OK",
+                "Temperature (°C)": None,
+                "Temperature": 41,
+                "Uptime (seconds)": 120,
+            },
+            {
+                "Host": "server-03",
+                "Status": "OK",
+                "Temperature (°C)": None,
+                "Temperature": None,
+                "Uptime (seconds)": 60,
+            },
+        ]
+        layout = build_snmp_layout(pd.DataFrame([{
+            "SNMP": "server-01",
+            "SNMP_COMMUNITY": "SampleColo-01",
+        }, {
+            "SNMP": "server-02",
+            "SNMP_COMMUNITY": "SampleColo-01",
+        }, {
+            "SNMP": "server-03",
+            "SNMP_COMMUNITY": "SampleColo-01",
+        }]))
+
+        with patch(
+            "modules.snmpdisplay.snmpdisplay.poll_snmp_assets",
+            new_callable=AsyncMock,
+            return_value=rows,
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.threading.Thread",
+            ImmediateThread,
+        ):
+            layout[2].clicks += 1
+
+        displayed_rows = layout[3].value
+        displayed_row = displayed_rows.iloc[0]
+        self.assertEqual(displayed_row["Uptime"], "1h 2m")
+        self.assertEqual(list(displayed_rows["Temperature"]), [35, 41, "N/A"])
+        timestamp = displayed_row["Timestamp"]
+        self.assertTrue(timestamp.endswith(" UTC"))
+        self.assertEqual(
+            datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S UTC").strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            ),
+            timestamp,
+        )
+        self.assertEqual(rows[0]["Uptime (seconds)"], 3723)
 
     def test_snmp_view_updates_device_colors_legend_and_polling_state(self):
         import config
@@ -1099,9 +1182,9 @@ class ProjectValidationTests(unittest.TestCase):
                 )
                 thread.return_value.start.assert_called_once()
                 build_snmp_layout.call_args.kwargs["on_results"]([
-                    {"Status": "OK"},
-                    {"Status": "Warning"},
-                    {"Status": "timeout"},
+                    {"Status": "timeout", "Temperature": 37.9},
+                    {"Status": "OK", "Temperature (°C)": 38},
+                    {"Status": "OK", "Temperature": 42},
                 ])
                 self.assertEqual(
                     [
@@ -1110,9 +1193,9 @@ class ProjectValidationTests(unittest.TestCase):
                     ],
                     ["#008000", "#ffff00", "#ff0000"],
                 )
-                self.assertIn("Error", legend.object)
-                self.assertIn("Warning", legend.object)
-                self.assertIn("Ok", legend.object)
+                self.assertIn("Red (&gt;=42 C)", legend.object)
+                self.assertIn("Yellow (38-&lt;42 C)", legend.object)
+                self.assertIn("Green (0-&lt;38 C)", legend.object)
                 self.assertIn("#ff0000", legend.object)
                 self.assertIn("#ffff00", legend.object)
                 self.assertIn("#008000", legend.object)
@@ -1127,7 +1210,7 @@ class ProjectValidationTests(unittest.TestCase):
                     ],
                     device_colors,
                 )
-                self.assertNotIn("Warning", legend.object)
+                self.assertNotIn("Yellow", legend.object)
                 periodic_callback.stop.assert_called_once()
         finally:
             plotter.close()
@@ -1147,11 +1230,14 @@ class ProjectValidationTests(unittest.TestCase):
         uptime.__int__.return_value = 12345
         system_name = MagicMock()
         system_name.prettyPrint.return_value = "test-device"
+        temperature = MagicMock()
+        temperature.prettyPrint.return_value = "35"
         response = [
             ("sysDescr.0", description),
             ("sysUpTime.0", uptime),
             ("sysName.0", system_name),
             ("serial.0", MagicMock(prettyPrint=MagicMock(return_value="FNS1234"))),
+            ("temperature.0", temperature),
         ]
         with patch(
             "modules.snmpdisplay.snmpdisplay.SnmpEngine",
@@ -1186,15 +1272,192 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(rows[0]["System name"], "test-device")
         self.assertEqual(rows[0]["Description"], "Test device")
         self.assertEqual(rows[0]["Serial"], "FNS1234")
+        self.assertEqual(rows[0]["Temperature"], 35)
+        self.assertEqual(rows[0]["Temperature (°C)"], 35)
         self.assertEqual(rows[0]["Uptime (seconds)"], 123.45)
         self.assertEqual(rows[0]["Status"], "OK")
-        self.assertEqual(len(get_cmd.await_args.args[4:]), 4)
-        from modules.snmpdisplay.snmpdisplay import _serial_oid_for_device
+        self.assertEqual(len(get_cmd.await_args.args[4:]), 5)
+        from modules.snmpdisplay.snmpdisplay import (
+            _serial_oid_for_device,
+            _temperature_oid_for_device,
+            _parse_temperature_celsius,
+        )
 
         self.assertEqual(
             _serial_oid_for_device("server-01.example.test"),
             "1.3.6.1.4.1.674.10892.5.4.300.10.1.8.1",
         )
+        self.assertEqual(
+            _temperature_oid_for_device("server-01.example.test"),
+            "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
+        )
+        self.assertEqual(
+            _temperature_oid_for_device("TORA01A"),
+            "1.3.6.1.4.1.9.9.91.1.1.1.1.4.1",
+        )
+        self.assertEqual(
+            _temperature_oid_for_device("SANControllerA"),
+            "1.3.6.1.4.1.674.11000.1.5.1.1.0",
+        )
+        self.assertEqual(
+            _temperature_oid_for_device("CoreSwitch01"),
+            "1.3.6.1.4.1.6027.3.1.1.1.5.0",
+        )
+        self.assertEqual(
+            _temperature_oid_for_device("SANSwitchA"),
+            "1.3.6.1.4.1.1588.2.1.1.1.5.0",
+        )
+        self.assertEqual(_parse_temperature_celsius("35"), 35)
+        self.assertEqual(_parse_temperature_celsius("45"), 45)
+        engine.close_dispatcher.assert_called_once_with()
+
+    def test_snmp_poll_reads_temperature_for_storage_and_switch_families(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from modules.snmpdisplay import poll_snmp_assets
+
+        hosts = (
+            "SANControllerA",
+            "SANControllerB",
+            "CoreSwitch01",
+            "CoreSwitch02",
+            "SANSwitchA",
+            "SANSwitchB",
+        )
+        responses = []
+        for host in hosts:
+            responses.append((
+                None,
+                0,
+                0,
+                [
+                    ("sysDescr.0", MagicMock(prettyPrint=MagicMock(return_value="Test device"))),
+                    ("sysUpTime.0", MagicMock(prettyPrint=MagicMock(return_value="12345"))),
+                    ("sysName.0", MagicMock(prettyPrint=MagicMock(return_value=host))),
+                    ("serial.0", MagicMock(prettyPrint=MagicMock(return_value=f"{host}-serial"))),
+                    ("temperature.0", MagicMock(prettyPrint=MagicMock(return_value="35"))),
+                ],
+            ))
+
+        with patch(
+            "modules.snmpdisplay.snmpdisplay.SnmpEngine",
+            return_value=MagicMock(),
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.UdpTransportTarget.create",
+            new_callable=AsyncMock,
+            return_value=object(),
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.get_cmd",
+            new_callable=AsyncMock,
+            side_effect=responses,
+        ):
+            rows = asyncio.run(
+                poll_snmp_assets(pd.DataFrame([
+                    {"SNMP": host, "SNMP_COMMUNITY": "DemoColo-01"}
+                    for host in hosts
+                ]))
+            )
+
+        self.assertEqual([row["Temperature"] for row in rows], [35] * len(hosts))
+
+    def test_snmp_uptime_ticks_convert_to_seconds(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from modules.snmpdisplay import poll_snmp_assets
+
+        engine = MagicMock()
+        uptimes = (8640000, 25400000, 31500000)
+        responses = []
+        for ticks in uptimes:
+            uptime = MagicMock(prettyPrint=MagicMock(return_value=str(ticks)))
+            uptime.__int__.return_value = ticks
+            responses.append((
+                None,
+                0,
+                0,
+                [
+                    ("sysDescr.0", MagicMock(prettyPrint=MagicMock(return_value="Test device"))),
+                    ("sysUpTime.0", uptime),
+                    ("sysName.0", MagicMock(prettyPrint=MagicMock(return_value="test-device"))),
+                    ("serial.0", MagicMock(prettyPrint=MagicMock(return_value="TEST123"))),
+                    ("temperature.0", MagicMock(prettyPrint=MagicMock(return_value="35"))),
+                ],
+            ))
+        with patch(
+            "modules.snmpdisplay.snmpdisplay.SnmpEngine",
+            return_value=engine,
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.UdpTransportTarget.create",
+            new_callable=AsyncMock,
+            return_value=object(),
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.get_cmd",
+            new_callable=AsyncMock,
+            side_effect=responses,
+        ):
+            rows = asyncio.run(
+                poll_snmp_assets(pd.DataFrame([
+                    {"SNMP": f"Server-{index}", "SNMP_COMMUNITY": "SampleColo-01"}
+                    for index in range(len(uptimes))
+                ]))
+            )
+
+        self.assertEqual(
+            [row["Uptime (seconds)"] for row in rows],
+            [86400, 254000, 315000],
+        )
+        self.assertEqual([row["Temperature"] for row in rows], [35, 35, 35])
+        engine.close_dispatcher.assert_called_once_with()
+
+    def test_snmp_missing_temperature_is_not_replaced_with_uptime(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from modules.snmpdisplay import poll_snmp_assets
+
+        engine = MagicMock()
+        target = object()
+        description = MagicMock(prettyPrint=MagicMock(return_value="Test device"))
+        uptime = MagicMock(prettyPrint=MagicMock(return_value="12345"))
+        uptime.__int__.return_value = 12345
+        system_name = MagicMock(prettyPrint=MagicMock(return_value="test-device"))
+        response = [
+            ("sysDescr.0", description),
+            ("sysUpTime.0", uptime),
+            ("sysName.0", system_name),
+            ("serial.0", MagicMock(prettyPrint=MagicMock(return_value="FNS1234"))),
+            (
+                "temperature.0",
+                MagicMock(
+                    prettyPrint=MagicMock(
+                        return_value="No Such Instance currently exists at this OID"
+                    )
+                ),
+            ),
+        ]
+        with patch(
+            "modules.snmpdisplay.snmpdisplay.SnmpEngine",
+            return_value=engine,
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.UdpTransportTarget.create",
+            new_callable=AsyncMock,
+            return_value=target,
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.get_cmd",
+            new_callable=AsyncMock,
+            return_value=(None, 0, 0, response),
+        ):
+            rows = asyncio.run(
+                poll_snmp_assets(pd.DataFrame([{
+                    "SNMP": "Server-01",
+                    "SNMP_COMMUNITY": "SampleColo-01",
+                }]))
+            )
+
+        self.assertIsNone(rows[0]["Temperature"])
+        self.assertEqual(rows[0]["Uptime (seconds)"], 123.45)
         engine.close_dispatcher.assert_called_once_with()
 
     def test_display_data_serves_combined_layout_in_browser(self):

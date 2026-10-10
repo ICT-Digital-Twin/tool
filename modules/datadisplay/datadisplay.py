@@ -31,13 +31,21 @@ def _build_function_legend_html(asset_data: pd.DataFrame) -> str:
     return _build_legend_html(entries)
 
 
-def _build_status_legend_html() -> str:
-    """Build the SNMP health legend."""
+def _build_temperature_legend_html() -> str:
+    """Build the SNMP temperature legend."""
     return _build_legend_html(
         [
-            ("Error", "#ff0000"),
-            ("Warning", "#ffff00"),
-            ("Ok", "#008000"),
+            (f"Red (>={config.SNMP_TEMPERATURE_RED_MIN_C} C)", "#ff0000"),
+            (
+                f"Yellow ({config.SNMP_TEMPERATURE_YELLOW_MIN_C}-"
+                f"<{config.SNMP_TEMPERATURE_RED_MIN_C} C)",
+                "#ffff00",
+            ),
+            (
+                f"Green ({config.SNMP_TEMPERATURE_GREEN_MIN_C}-"
+                f"<{config.SNMP_TEMPERATURE_YELLOW_MIN_C} C)",
+                "#008000",
+            ),
         ]
     )
 
@@ -597,10 +605,24 @@ def build_data_layout(
         snmp_device_colors.clear()
         for index in device_actors:
             row = rows[index] if index < len(rows) else {}
-            status = row.get("Status")
-            if isinstance(status, str) and status.strip().casefold() == "ok":
+            temperature = row.get("Temperature (°C)")
+            if temperature is None:
+                temperature = row.get("Temperature")
+            if (
+                isinstance(temperature, (int, float))
+                and not isinstance(temperature, bool)
+                and config.SNMP_TEMPERATURE_GREEN_MIN_C
+                <= temperature
+                < config.SNMP_TEMPERATURE_YELLOW_MIN_C
+            ):
                 color = "#008000"
-            elif isinstance(status, str) and status.strip().casefold() == "warning":
+            elif (
+                isinstance(temperature, (int, float))
+                and not isinstance(temperature, bool)
+                and config.SNMP_TEMPERATURE_YELLOW_MIN_C
+                <= temperature
+                < config.SNMP_TEMPERATURE_RED_MIN_C
+            ):
                 color = "#ffff00"
             else:
                 color = "#ff0000"
@@ -615,7 +637,7 @@ def build_data_layout(
         nonlocal snmp_mode_active
         snmp_mode_active = active
         legend_pane.object = (
-            _build_status_legend_html()
+            _build_temperature_legend_html()
             if active
             else _build_function_legend_html(assets)
         )
