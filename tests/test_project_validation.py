@@ -535,6 +535,8 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertEqual(layout[0][1].styles["left"], "12px")
             self.assertEqual(layout[0][1].styles["bottom"], "48px")
             self.assertIn("background:transparent", legend_html)
+            self.assertIn("font:14.4px sans-serif", legend_html)
+            self.assertIn("width:13.2px", legend_html)
         finally:
             plotter.close()
 
@@ -887,8 +889,13 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertIsInstance(layout[1], pn.Column)
             self.assertEqual(layout[1].styles["flex"], "1 1 0px")
             self.assertEqual(layout[1].styles["min-width"], "0")
-            right_panel_selector = layout[1][0]
+            right_panel_header = layout[1][0]
+            right_panel_selector = right_panel_header[0]
+            snmp_refresh_button = right_panel_header[1]
             right_panel_content = layout[1][1]
+            self.assertIsInstance(right_panel_header, pn.Row)
+            self.assertEqual(snmp_refresh_button.label, "Refresh SNMP devices")
+            self.assertTrue(snmp_refresh_button.visible)
             self.assertIsInstance(right_panel_selector, pn.widgets.Select)
             self.assertEqual(right_panel_selector.value, "assets")
             self.assertEqual(right_panel_selector.styles, {})
@@ -928,7 +935,7 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertEqual(feed_2.styles["color"], "#d62728")
             right_panel_selector.value = "snmp"
             self.assertEqual(
-                right_panel_content[0][4].object.layout.title.text,
+                right_panel_content[0][3].object.layout.title.text,
                 "SNMP System Uptime",
             )
             right_panel_selector.value = "assets"
@@ -1050,7 +1057,7 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertIsInstance(layout[1], pn.pane.Alert)
         self.assertIsInstance(layout[2], pn.widgets.Button)
         self.assertEqual(layout[2].label, "Refresh SNMP devices")
-        self.assertFalse(layout[2].visible)
+        self.assertTrue(layout[2].visible)
         self.assertIsInstance(layout[3], pn.widgets.Tabulator)
         self.assertEqual(
             list(layout[3].value.columns),
@@ -1058,9 +1065,9 @@ class ProjectValidationTests(unittest.TestCase):
                 "Host",
                 "Status",
                 "Temperature",
+                "Power",
                 "Uptime",
                 "Description",
-                "Timestamp",
                 "Serial",
             ],
         )
@@ -1074,8 +1081,7 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertIsInstance(layout[5], pn.pane.Plotly)
         self.assertEqual(layout[5].object.layout.title.text, "SNMP System Power")
 
-    def test_snmp_results_format_uptime_and_validate_timestamp(self):
-        from datetime import datetime
+    def test_snmp_results_format_uptime_and_power_without_timestamp_column(self):
         from unittest.mock import AsyncMock
 
         from modules.snmpdisplay import build_snmp_layout
@@ -1094,6 +1100,7 @@ class ProjectValidationTests(unittest.TestCase):
                 "Status": "OK",
                 "Temperature (°C)": 35,
                 "Temperature": 35,
+                "Power": 225,
                 "Uptime (seconds)": 3723,
             },
             {
@@ -1101,6 +1108,7 @@ class ProjectValidationTests(unittest.TestCase):
                 "Status": "OK",
                 "Temperature (°C)": None,
                 "Temperature": 41,
+                "Power": 300,
                 "Uptime (seconds)": 120,
             },
             {
@@ -1132,18 +1140,13 @@ class ProjectValidationTests(unittest.TestCase):
         ):
             layout[2].clicks += 1
 
+        self.assertTrue(layout[2].visible)
         displayed_rows = layout[3].value
         displayed_row = displayed_rows.iloc[0]
         self.assertEqual(displayed_row["Uptime"], "1h 2m")
         self.assertEqual(list(displayed_rows["Temperature"]), [35, 41, "N/A"])
-        timestamp = displayed_row["Timestamp"]
-        self.assertTrue(timestamp.endswith(" UTC"))
-        self.assertEqual(
-            datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S UTC").strftime(
-                "%Y-%m-%d %H:%M:%S UTC"
-            ),
-            timestamp,
-        )
+        self.assertEqual(list(displayed_rows["Power"]), [225, 300, "N/A"])
+        self.assertNotIn("Timestamp", displayed_rows.columns)
         self.assertEqual(rows[0]["Uptime (seconds)"], 3723)
 
     def test_snmp_view_updates_device_colors_legend_and_polling_state(self):

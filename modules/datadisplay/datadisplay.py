@@ -57,17 +57,17 @@ def _build_legend_html(entries: list[tuple[str, str]]) -> str:
 
     rows = "".join(
         (
-            '<div style="display:flex;align-items:center;gap:7px;'
-            'font:12px sans-serif;line-height:18px;color:#f8fafc;">'
-            f'<span aria-hidden="true" style="display:inline-block;width:11px;'
-            f'height:11px;flex:0 0 11px;background:{escape(color, quote=True)};"></span>'
+            '<div style="display:flex;align-items:center;gap:8.4px;'
+            'font:14.4px sans-serif;line-height:21.6px;color:#f8fafc;">'
+            f'<span aria-hidden="true" style="display:inline-block;width:13.2px;'
+            f'height:13.2px;flex:0 0 13.2px;background:{escape(color, quote=True)};"></span>'
             f'<span>{escape(label)}</span></div>'
         )
         for label, color in entries
     )
     return (
-        '<div style="display:inline-flex;flex-direction:column;gap:3px;'
-        'padding:8px 10px;background:transparent;pointer-events:none;">'
+        '<div style="display:inline-flex;flex-direction:column;gap:3.6px;'
+        'padding:9.6px 12px;background:transparent;pointer-events:none;">'
         f"{rows}</div>"
     )
 
@@ -806,7 +806,19 @@ def build_data_layout(
         height=32,
         margin=(8, 0, 0, 0),
     )
-    snmp_panel = build_snmp_layout(assets, on_results=update_snmp_colors)
+    snmp_refresh_button = pn.widgets.Button(
+        label="Refresh SNMP devices",
+        color="primary",
+        disabled=assets.empty or not {"SNMP", "SNMP_COMMUNITY"}.issubset(assets.columns),
+        width=190,
+        height=32,
+        margin=(8, 0, 0, 8),
+    )
+    snmp_panel = build_snmp_layout(
+        assets,
+        on_results=update_snmp_colors,
+        refresh_button=snmp_refresh_button,
+    )
 
     def select_right_panel(event: object) -> None:
         is_snmp = event.new == "snmp"
@@ -818,7 +830,12 @@ def build_data_layout(
 
     right_panel_selector.param.watch(select_right_panel, "value")
     right_panel = pn.Column(
-        right_panel_selector,
+        pn.Row(
+            right_panel_selector,
+            snmp_refresh_button,
+            align="end",
+            sizing_mode="stretch_width",
+        ),
         right_panel_content,
         sizing_mode="stretch_both",
         min_height=800,

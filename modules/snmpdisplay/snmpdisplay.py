@@ -64,9 +64,9 @@ _RESULT_COLUMNS = (
    "Host",
    "Status",
    "Temperature",
+    "Power",
    "Uptime",
    "Description",
-   "Timestamp",
    "Serial",
 )
 
@@ -370,6 +370,7 @@ def build_snmp_power_figure(
 def build_snmp_layout(
     asset_data: pd.DataFrame | None = None,
     on_results: Callable[[list[dict[str, object]]], None] | None = None,
+    refresh_button: pn.widgets.Button | None = None,
 ) -> pn.Column:
     """Build the SNMP panel with live polling and result history."""
     pn.extension("plotly", "tabulator")
@@ -402,19 +403,19 @@ def build_snmp_layout(
         sizing_mode="stretch_width",
         height=500,
     )
-    refresh_button = pn.widgets.Button(
-        label="Refresh SNMP devices",
-        color="primary",
-        disabled=assets.empty or not {"SNMP", "SNMP_COMMUNITY"}.issubset(assets.columns),
-        visible=False,
-    )
+    include_refresh_button = refresh_button is None
+    if refresh_button is None:
+        refresh_button = pn.widgets.Button(
+            label="Refresh SNMP devices",
+            color="primary",
+            disabled=assets.empty or not {"SNMP", "SNMP_COMMUNITY"}.issubset(assets.columns),
+        )
 
     def set_status(message: str, alert_type: str) -> None:
         status_revision["value"] += 1
         status.object = message
         status.alert_type = alert_type
         status.visible = True
-        refresh_button.visible = False
 
     def finish_poll(
         rows: list[dict[str, object]] | None,
@@ -445,14 +446,12 @@ def build_snmp_layout(
             results_df["Uptime"] = results_df["Uptime (seconds)"].map(
                 _format_uptime
             )
-        results_df["Timestamp"] = pd.to_datetime(
-            results_df["Timestamp"], utc=True, errors="raise"
-        ).dt.strftime("%Y-%m-%d %H:%M:%S UTC")
         results_df = results_df.reindex(columns=_RESULT_COLUMNS)
-        results_df["Temperature"] = results_df["Temperature"].astype(object).where(
-            results_df["Temperature"].notna(),
-            "N/A",
-        )
+        for column in ("Temperature", "Power"):
+            results_df[column] = results_df[column].astype(object).where(
+                results_df[column].notna(),
+                "N/A",
+            )
         results.value = results_df
         chart.object = build_snmp_figure(history)
         power_chart.object = build_snmp_power_figure(history)
@@ -473,7 +472,6 @@ def build_snmp_layout(
                 def clear_status() -> None:
                     if status_revision["value"] == revision:
                         status.visible = False
-                        refresh_button.visible = True
 
                 document.add_timeout_callback(clear_status, 5000)
 
@@ -502,13 +500,12 @@ def build_snmp_layout(
         threading.Thread(target=worker, daemon=True).start()
 
     refresh_button.on_click(on_poll)
+    panel_objects = [pn.pane.Markdown("## SNMP system data"), status]
+    if include_refresh_button:
+        panel_objects.append(refresh_button)
+    panel_objects.extend((results, chart, power_chart))
     snmp_panel = pn.Column(
-        pn.pane.Markdown("## SNMP system data"),
-        status,
-        refresh_button,
-        results,
-        chart,
-        power_chart,
+        *panel_objects,
         sizing_mode="stretch_both",
         min_height=800,
         visible=False,
