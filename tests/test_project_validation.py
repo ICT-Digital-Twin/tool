@@ -739,6 +739,14 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(list(first_feed_trace.y), [40000, 30000])
         self.assertEqual(first_feed_trace.line.color, "#d62728")
         self.assertEqual(first_feed_trace.line.dash, "dot")
+        capacity_shapes = figure.layout.shapes
+        row_domain = figure.layout.xaxis.domain
+        self.assertEqual(len(capacity_shapes), 4)
+        self.assertEqual(capacity_shapes[0].xref, "paper")
+        self.assertEqual(capacity_shapes[0].yref, "y")
+        self.assertAlmostEqual(capacity_shapes[0].x0, row_domain[0])
+        self.assertAlmostEqual(capacity_shapes[1].x1, row_domain[1])
+        self.assertTrue(all(shape.line.dash == "dot" for shape in capacity_shapes))
         self.assertEqual(second_feed_trace.name, "Feed 2 capacity")
         self.assertEqual(list(second_feed_trace.y), [35000, 25000])
         self.assertEqual(second_feed_trace.line.dash, "dot")
@@ -987,7 +995,11 @@ class ProjectValidationTests(unittest.TestCase):
         import panel as pn
         import plotly.graph_objects as go
 
-        from modules.snmpdisplay import build_snmp_figure, build_snmp_layout
+        from modules.snmpdisplay import (
+            build_snmp_figure,
+            build_snmp_layout,
+            build_snmp_power_figure,
+        )
 
         timestamp = datetime(2026, 10, 9, tzinfo=timezone.utc)
         figure = build_snmp_figure([
@@ -1004,6 +1016,21 @@ class ProjectValidationTests(unittest.TestCase):
                 "Status": "timeout",
             },
         ])
+        power_figure = build_snmp_power_figure([
+            {
+                "Host": "server-01",
+                "Timestamp": timestamp,
+                "Power": 225,
+                "Status": "OK",
+            },
+            {
+                "Host": "server-02",
+                "Timestamp": timestamp,
+                "Power": 300,
+                "Status": "timeout",
+            },
+        ])
+        empty_power_figure = build_snmp_power_figure()
         layout = build_snmp_layout(pd.DataFrame([
             {"SNMP": "server-01", "SNMP_COMMUNITY": "SampleColo-01"},
         ]))
@@ -1013,8 +1040,13 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(figure.data[0].name, "server-01")
         self.assertEqual(list(figure.data[0].y), [120])
         self.assertEqual(figure.layout.yaxis.title.text, "Uptime (seconds)")
+        self.assertEqual(power_figure.layout.title.text, "SNMP System Power")
+        self.assertEqual(power_figure.layout.yaxis.title.text, "Power (W)")
+        self.assertEqual(power_figure.data[0].name, "server-01")
+        self.assertEqual(list(power_figure.data[0].y), [225])
+        self.assertIn("system power", empty_power_figure.layout.annotations[0].text)
         self.assertIsInstance(layout, pn.Column)
-        self.assertEqual(len(layout), 5)
+        self.assertEqual(len(layout), 6)
         self.assertIsInstance(layout[1], pn.pane.Alert)
         self.assertIsInstance(layout[2], pn.widgets.Button)
         self.assertEqual(layout[2].label, "Refresh SNMP devices")
@@ -1038,6 +1070,9 @@ class ProjectValidationTests(unittest.TestCase):
             {"Description": 150, "Serial": 100},
         )
         self.assertIsInstance(layout[4], pn.pane.Plotly)
+        self.assertEqual(layout[4].object.layout.title.text, "SNMP System Temperature")
+        self.assertIsInstance(layout[5], pn.pane.Plotly)
+        self.assertEqual(layout[5].object.layout.title.text, "SNMP System Power")
 
     def test_snmp_results_format_uptime_and_validate_timestamp(self):
         from datetime import datetime
@@ -1239,6 +1274,10 @@ class ProjectValidationTests(unittest.TestCase):
             ("serial.0", MagicMock(prettyPrint=MagicMock(return_value="FNS1234"))),
             ("temperature.0", temperature),
         ]
+        power_oid = MagicMock()
+        power_oid.asTuple.return_value = (
+            1, 3, 6, 1, 4, 1, 674, 10892, 5, 4, 600, 20, 1, 6, 1
+        )
         with patch(
             "modules.snmpdisplay.snmpdisplay.SnmpEngine",
             return_value=engine,
@@ -1250,7 +1289,16 @@ class ProjectValidationTests(unittest.TestCase):
             "modules.snmpdisplay.snmpdisplay.get_cmd",
             new_callable=AsyncMock,
             return_value=(None, 0, 0, response),
-        ) as get_cmd:
+        ) as get_cmd, patch(
+            "modules.snmpdisplay.snmpdisplay.next_cmd",
+            new_callable=AsyncMock,
+            return_value=(
+                None,
+                0,
+                0,
+                [(power_oid, MagicMock(prettyPrint=MagicMock(return_value="225")))],
+            ),
+        ):
             rows = asyncio.run(
                 poll_snmp_assets(pd.DataFrame([{
                     "NAME": "display label",
@@ -1274,13 +1322,16 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(rows[0]["Serial"], "FNS1234")
         self.assertEqual(rows[0]["Temperature"], 35)
         self.assertEqual(rows[0]["Temperature (°C)"], 35)
+        self.assertEqual(rows[0]["Power"], 225)
         self.assertEqual(rows[0]["Uptime (seconds)"], 123.45)
         self.assertEqual(rows[0]["Status"], "OK")
         self.assertEqual(len(get_cmd.await_args.args[4:]), 5)
         from modules.snmpdisplay.snmpdisplay import (
             _serial_oid_for_device,
             _temperature_oid_for_device,
+            _power_oid_for_device,
             _parse_temperature_celsius,
+            _parse_power,
         )
 
         self.assertEqual(
@@ -1290,6 +1341,10 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(
             _temperature_oid_for_device("server-01.example.test"),
             "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
+        )
+        self.assertEqual(
+            _power_oid_for_device("server-01.example.test"),
+            "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
         )
         self.assertEqual(
             _temperature_oid_for_device("TORA01A"),
@@ -1309,6 +1364,7 @@ class ProjectValidationTests(unittest.TestCase):
         )
         self.assertEqual(_parse_temperature_celsius("35"), 35)
         self.assertEqual(_parse_temperature_celsius("45"), 45)
+        self.assertEqual(_parse_power("225"), 225)
         engine.close_dispatcher.assert_called_once_with()
 
     def test_snmp_poll_reads_temperature_for_storage_and_switch_families(self):
@@ -1385,6 +1441,10 @@ class ProjectValidationTests(unittest.TestCase):
                     ("temperature.0", MagicMock(prettyPrint=MagicMock(return_value="35"))),
                 ],
             ))
+        power_oid = MagicMock()
+        power_oid.asTuple.return_value = (
+            1, 3, 6, 1, 4, 1, 674, 10892, 5, 4, 600, 20, 1, 6, 1
+        )
         with patch(
             "modules.snmpdisplay.snmpdisplay.SnmpEngine",
             return_value=engine,
@@ -1396,6 +1456,15 @@ class ProjectValidationTests(unittest.TestCase):
             "modules.snmpdisplay.snmpdisplay.get_cmd",
             new_callable=AsyncMock,
             side_effect=responses,
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.next_cmd",
+            new_callable=AsyncMock,
+            return_value=(
+                None,
+                0,
+                0,
+                [(power_oid, MagicMock(prettyPrint=MagicMock(return_value="225")))],
+            ),
         ):
             rows = asyncio.run(
                 poll_snmp_assets(pd.DataFrame([
@@ -1409,6 +1478,7 @@ class ProjectValidationTests(unittest.TestCase):
             [86400, 254000, 315000],
         )
         self.assertEqual([row["Temperature"] for row in rows], [35, 35, 35])
+        self.assertEqual([row["Power"] for row in rows], [225, 225, 225])
         engine.close_dispatcher.assert_called_once_with()
 
     def test_snmp_missing_temperature_is_not_replaced_with_uptime(self):
@@ -1437,6 +1507,10 @@ class ProjectValidationTests(unittest.TestCase):
                 ),
             ),
         ]
+        power_oid = MagicMock()
+        power_oid.asTuple.return_value = (
+            1, 3, 6, 1, 4, 1, 674, 10892, 5, 4, 600, 20, 1, 6, 1
+        )
         with patch(
             "modules.snmpdisplay.snmpdisplay.SnmpEngine",
             return_value=engine,
@@ -1448,6 +1522,15 @@ class ProjectValidationTests(unittest.TestCase):
             "modules.snmpdisplay.snmpdisplay.get_cmd",
             new_callable=AsyncMock,
             return_value=(None, 0, 0, response),
+        ), patch(
+            "modules.snmpdisplay.snmpdisplay.next_cmd",
+            new_callable=AsyncMock,
+            return_value=(
+                None,
+                0,
+                0,
+                [(power_oid, MagicMock(prettyPrint=MagicMock(return_value="225")))],
+            ),
         ):
             rows = asyncio.run(
                 poll_snmp_assets(pd.DataFrame([{

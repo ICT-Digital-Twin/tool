@@ -19,6 +19,7 @@ from pysnmp.hlapi.v3arch.asyncio import (
     SnmpEngine,
     UdpTransportTarget,
     get_cmd,
+    next_cmd,
 )
 
 
@@ -50,6 +51,13 @@ _TEMPERATURE_OIDS = (
    (("coreswitch",), "1.3.6.1.4.1.6027.3.1.1.1.5.0"),
    (("sanswitch",), "1.3.6.1.4.1.1588.2.1.1.1.5.0"),
 )
+_POWER_OIDS = (
+    (
+         ("computenode", "virt", "db", "app", "kube", "server", "ainode"),
+         "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
+    ),
+)
+_POWER_GETNEXT_START_OID = "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.0"
 _SIMULATOR_ADDRESS = "127.0.0.1"
 _SIMULATOR_PORT = 1161
 _RESULT_COLUMNS = (
@@ -82,8 +90,21 @@ def _temperature_oid_for_device(device_name: str) -> str | None:
    return _device_oid_for_device(device_name, _TEMPERATURE_OIDS)
 
 
+def _power_oid_for_device(device_name: str) -> str | None:
+    """Select the vendor-specific power OID used by the SNMP simulator."""
+    return _device_oid_for_device(device_name, _POWER_OIDS)
+
+
 def _parse_temperature_celsius(value: str) -> float | None:
    """Parse an SNMP temperature reading already reported in Celsius."""
+   try:
+       return float(value)
+   except (TypeError, ValueError):
+       return None
+
+
+def _parse_power(value: str) -> float | None:
+   """Parse an SNMP power reading without assuming its unit."""
    try:
        return float(value)
    except (TypeError, ValueError):
@@ -105,9 +126,10 @@ async def query_device(
    community: str,
    target: UdpTransportTarget,
 ) -> dict[str, object]:
-   """Fetch simulator system details and device-specific serial and temperature."""
+   """Fetch simulator system details and device-specific serial, temperature, and power."""
    serial_oid = _serial_oid_for_device(device_name.lower())
    temperature_oid = _temperature_oid_for_device(device_name.lower())
+   power_oid = _power_oid_for_device(device_name.lower())
    requested_oids = (
        *_SYSTEM_OIDS,
        *((serial_oid,) if serial_oid else ()),
@@ -137,11 +159,29 @@ async def query_device(
    )
    serial = var_binds[3][1].prettyPrint() if serial_oid else "N/A"
    temperature_value = None
+   power_value = None
    if temperature_oid:
        temperature_index = 4 if serial_oid else 3
        temperature_value = _parse_temperature_celsius(
            var_binds[temperature_index][1].prettyPrint()
        )
+   if power_oid:
+       try:
+           power_error, power_status, _, power_var_binds = await next_cmd(
+               engine,
+               CommunityData(community, mpModel=1),
+               target,
+               ContextData(),
+               ObjectType(ObjectIdentity(_POWER_GETNEXT_START_OID)),
+               lexicographicMode=False,
+           )
+           if not power_error and not power_status and len(power_var_binds) == 1:
+               power_name, power_response = power_var_binds[0]
+               expected_power_oid = tuple(int(part) for part in power_oid.split("."))
+               if tuple(power_name.asTuple()) == expected_power_oid:
+                   power_value = _parse_power(power_response.prettyPrint())
+       except (OSError, RuntimeError, asyncio.TimeoutError):
+           pass
    try:
        uptime_seconds = int(uptime_ticks) / 100
    except ValueError as error:
@@ -153,6 +193,7 @@ async def query_device(
        "Description": description,
        "Temperature (°C)": temperature_value,
        "Temperature": temperature_value,
+    "Power": power_value,
        "Uptime (seconds)": uptime_seconds,
        "Status": "OK",
    }
@@ -276,6 +317,56 @@ def build_snmp_figure(
     return figure
 
 
+def build_snmp_power_figure(
+    samples: Sequence[Mapping[str, object]] = (),
+) -> go.Figure:
+    """Build a time series of numeric SNMP system power readings."""
+    figure = go.Figure()
+    hosts: dict[str, list[tuple[object, float]]] = {}
+
+    for sample in samples:
+        host = sample.get("Host")
+        timestamp = sample.get("Timestamp")
+        power = sample.get("Power")
+        if (
+            sample.get("Status") == "OK"
+            and isinstance(host, str)
+            and timestamp is not None
+            and isinstance(power, (int, float))
+        ):
+            hosts.setdefault(host, []).append((timestamp, float(power)))
+
+    for host, points in hosts.items():
+        figure.add_trace(
+            go.Scatter(
+                x=[timestamp for timestamp, _ in points],
+                y=[power for _, power in points],
+                mode="lines+markers",
+                name=host,
+            )
+        )
+    if not hosts:
+        figure.add_annotation(
+            text="Poll supported SNMP devices to collect system power",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+        )
+
+    figure.update_layout(
+        title="SNMP System Power",
+        template="plotly_white",
+        autosize=True,
+        height=500,
+        xaxis_title="Poll time",
+        yaxis_title="Power (W)",
+        margin={"l": 55, "r": 30, "t": 75, "b": 50},
+    )
+    return figure
+
+
 def build_snmp_layout(
     asset_data: pd.DataFrame | None = None,
     on_results: Callable[[list[dict[str, object]]], None] | None = None,
@@ -301,6 +392,12 @@ def build_snmp_layout(
     )
     chart = pn.pane.Plotly(
         build_snmp_figure(),
+        config={"responsive": True},
+        sizing_mode="stretch_width",
+        height=500,
+    )
+    power_chart = pn.pane.Plotly(
+        build_snmp_power_figure(),
         config={"responsive": True},
         sizing_mode="stretch_width",
         height=500,
@@ -358,6 +455,7 @@ def build_snmp_layout(
         )
         results.value = results_df
         chart.object = build_snmp_figure(history)
+        power_chart.object = build_snmp_power_figure(history)
         if on_results is not None:
             on_results(rows)
         failures = sum(row.get("Status") != "OK" for row in rows)
@@ -410,6 +508,7 @@ def build_snmp_layout(
         refresh_button,
         results,
         chart,
+        power_chart,
         sizing_mode="stretch_both",
         min_height=800,
         visible=False,

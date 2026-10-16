@@ -130,6 +130,46 @@ def _get_feed_state(
     return feeds
 
 
+def _extend_row_capacity_to_subplot_edges(
+    figure: go.Figure,
+    capacities: list[float | None],
+) -> None:
+    """Extend defined endpoint capacities to the row subplot boundaries."""
+    if not capacities:
+        return
+
+    domain_start, domain_end = figure.layout.xaxis.domain
+    category_width = (domain_end - domain_start) / len(capacities)
+    line = {"color": "#d62728", "width": 2, "dash": "dot"}
+
+    if capacities[0] is not None:
+        category_center = domain_start + category_width / 2
+        figure.add_shape(
+            type="line",
+            x0=domain_start,
+            y0=capacities[0],
+            x1=category_center,
+            y1=capacities[0],
+            xref="paper",
+            yref="y",
+            line=line,
+            layer="above",
+        )
+    if capacities[-1] is not None:
+        category_center = domain_end - category_width / 2
+        figure.add_shape(
+            type="line",
+            x0=category_center,
+            y0=capacities[-1],
+            x1=domain_end,
+            y1=capacities[-1],
+            xref="paper",
+            yref="y",
+            line=line,
+            layer="above",
+        )
+
+
 def build_data_figure(
     asset_data: pd.DataFrame,
     room_layout_data: Mapping[str, object] | None = None,
@@ -306,6 +346,10 @@ def build_data_figure(
                             ),
                             row=1,
                             col=1,
+                        )
+                        _extend_row_capacity_to_subplot_edges(
+                            figure,
+                            feed_capacities,
                         )
     else:
         figure.add_trace(go.Bar(x=[], y=[]), row=1, col=1)
