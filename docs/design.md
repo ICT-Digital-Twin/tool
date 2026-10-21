@@ -121,6 +121,11 @@ feed on both charts. Capacity reference lines in the row chart are red and
 dotted; the rack chart shows the configured RPDU capacity as a red dotted line
 when an active feed exceeds it.
 
+The summary table at the bottom of the asset dashboard reports total configured
+room feed capacity, total asset power load, and required cooling airflow in CFM.
+Cooling airflow is calculated from the total IT load in kW using
+`(IT Load in kW / 14.534688 * 3600) / 1.699`.
+
 Mouseover any device to view asset data.
 
 

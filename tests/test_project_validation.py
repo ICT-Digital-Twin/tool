@@ -864,6 +864,71 @@ class ProjectValidationTests(unittest.TestCase):
         self.assertEqual(figure.data[4].line.color, "#d62728")
         self.assertEqual(figure.data[4].line.dash, "dot")
 
+    def test_room_summary_table_reports_capacity_load_and_future_cooling(self):
+        from modules.datadisplay.datadisplay import _build_room_summary_table
+
+        summary = _build_room_summary_table(
+            pd.DataFrame({"POWERLOAD": [1200, 800, None]}),
+            {
+                "power": {
+                    "feed_a1_capacity": 10000,
+                    "feed_a2_capacity": 15000,
+                    "feed_b1_capacity": 20000,
+                    "rpdu_capacity": 5000,
+                    "feed_c1_capacity": "invalid",
+                }
+            },
+        )
+        self.assertEqual(
+            list(summary.value.itertuples(index=False, name=None)),
+            [
+                ("Total Room Capacity", "45,000 W"),
+                ("Total Room Load", "2,000 W"),
+                ("Required Cooling", "291.56 CFM"),
+            ],
+        )
+        self.assertEqual(summary.margin, (24, 0, 8, 0))
+        self.assertEqual(summary.widths, {"Metric": 240, "Value": 180})
+
+    def test_room_summary_table_is_at_bottom_of_right_dashboard(self):
+        import panel as pn
+
+        from modules.datadisplay import build_data_layout
+        from modules.display.display import build_scene
+
+        asset_data = pd.DataFrame(
+            [
+                {
+                    "NAME": "Server A",
+                    "ROW": "A",
+                    "RACK": "A01",
+                    "RACK_UNIT": 1,
+                    "SIZE": 1,
+                    "POWERLOAD": 1200,
+                }
+            ]
+        )
+        plotter = build_scene(asset_data)
+        try:
+            layout = build_data_layout(asset_data, plotter)
+            right_dashboard = layout[1][1][0]
+            right_panel_header = layout[1][0]
+            right_panel_selector = right_panel_header[0]
+            refresh_button = right_panel_header[1]
+
+            self.assertIn("VTK", type(layout[0][0]).__name__)
+            self.assertEqual(len(layout[0]), 2)
+            self.assertIsInstance(right_dashboard[0], pn.pane.Plotly)
+            self.assertIsInstance(right_dashboard[2], pn.widgets.Tabulator)
+            self.assertIsInstance(right_dashboard[3], pn.widgets.Tabulator)
+            self.assertFalse(refresh_button.visible)
+            right_panel_selector.value = "snmp"
+            self.assertTrue(refresh_button.visible)
+            right_panel_selector.value = "assets"
+            self.assertFalse(refresh_button.visible)
+        finally:
+            plotter.close()
+
     def test_plotly_feed_controls_and_selection_highlight_matching_devices_and_racks(self):
         from modules.datadisplay import build_data_layout
         from modules.display.display import build_scene
@@ -895,18 +960,30 @@ class ProjectValidationTests(unittest.TestCase):
             right_panel_content = layout[1][1]
             self.assertIsInstance(right_panel_header, pn.Row)
             self.assertEqual(snmp_refresh_button.label, "Refresh SNMP devices")
-            self.assertTrue(snmp_refresh_button.visible)
+            self.assertFalse(snmp_refresh_button.visible)
             self.assertIsInstance(right_panel_selector, pn.widgets.Select)
             self.assertEqual(right_panel_selector.value, "assets")
             self.assertEqual(right_panel_selector.styles, {})
             self.assertIsInstance(right_panel_content[0], pn.Column)
             asset_dashboard = right_panel_content[0]
+            summary_table = asset_dashboard[3]
             plotly_pane = asset_dashboard[0]
             controls_row = asset_dashboard[1]
             feed_controls = controls_row[0]
             clear_button = controls_row[1]
             inventory = asset_dashboard[2]
+            self.assertIsInstance(summary_table, pn.widgets.Tabulator)
+            self.assertEqual(
+                list(summary_table.value.itertuples(index=False, name=None)),
+                [
+                    ("Total Room Capacity", "0 W"),
+                    ("Total Room Load", "38,000 W"),
+                    ("Required Cooling", "5,539.62 CFM"),
+                ],
+            )
             self.assertIsInstance(plotly_pane, pn.pane.Plotly)
+            self.assertIsInstance(layout[0], pn.Column)
+            self.assertEqual(len(layout[0]), 2)
             self.assertIsInstance(feed_controls, pn.Column)
             self.assertIsInstance(controls_row, pn.Row)
             self.assertIs(controls_row[1], clear_button)
@@ -934,11 +1011,13 @@ class ProjectValidationTests(unittest.TestCase):
             self.assertEqual(feed_1.styles["color"], "#1f77b4")
             self.assertEqual(feed_2.styles["color"], "#d62728")
             right_panel_selector.value = "snmp"
+            self.assertTrue(snmp_refresh_button.visible)
             self.assertEqual(
                 right_panel_content[0][3].object.layout.title.text,
                 "SNMP System Uptime",
             )
             right_panel_selector.value = "assets"
+            self.assertFalse(snmp_refresh_button.visible)
             self.assertIs(right_panel_content[0], asset_dashboard)
             self.assertIsInstance(inventory, pn.widgets.Tabulator)
             self.assertEqual(len(layout.objects), 2)

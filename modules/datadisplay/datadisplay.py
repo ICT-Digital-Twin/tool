@@ -120,6 +120,59 @@ def _extract_rpdu_capacity(
     return capacity if capacity > 0 else None
 
 
+def _build_room_summary_table(
+    asset_data: pd.DataFrame,
+    room_layout_data: Mapping[str, object] | None,
+) -> pn.widgets.Tabulator:
+    """Build the summary of room capacity, load, and required cooling airflow."""
+    power_data = (
+        room_layout_data.get("power", {})
+        if isinstance(room_layout_data, Mapping)
+        else {}
+    )
+    total_capacity = 0.0
+    if isinstance(power_data, Mapping):
+        for key, value in power_data.items():
+            if not isinstance(key, str) or not re.fullmatch(
+                r"feed_.+_capacity", key, re.IGNORECASE
+            ):
+                continue
+            try:
+                capacity = float(value)
+            except (TypeError, ValueError):
+                continue
+            if capacity > 0:
+                total_capacity += capacity
+
+    if "POWERLOAD" in asset_data:
+        total_load = pd.to_numeric(
+            asset_data["POWERLOAD"], errors="coerce"
+        ).fillna(0).sum()
+        load_value = f"{total_load:,.0f} W"
+        load_kw = total_load / 1000
+        required_cooling = (load_kw / 14.534688 * 3600) / 1.699
+        cooling_value = f"{required_cooling:,.2f} CFM"
+    else:
+        load_value = "Not available"
+        cooling_value = "Not available"
+
+    return pn.widgets.Tabulator(
+        pd.DataFrame(
+            [
+                {"Metric": "Total Room Capacity", "Value": f"{total_capacity:,.0f} W"},
+                {"Metric": "Total Room Load", "Value": load_value},
+                {"Metric": "Required Cooling", "Value": cooling_value},
+            ]
+        ),
+        show_index=False,
+        disabled=True,
+        height=132,
+        sizing_mode="stretch_width",
+        margin=(24, 0, 8, 0),
+        widths={"Metric": 240, "Value": 180},
+    )
+
+
 def _get_feed_state(
     feeds: tuple[bool, bool] | Mapping[str, tuple[bool, bool]],
     row: object,
@@ -787,6 +840,7 @@ def build_data_layout(
             sizing_mode="stretch_width",
         ),
         inventory,
+        _build_room_summary_table(assets, room_layout_data),
         sizing_mode="stretch_both",
         min_height=800,
     )
@@ -813,6 +867,7 @@ def build_data_layout(
         width=190,
         height=32,
         margin=(8, 0, 0, 8),
+        visible=False,
     )
     snmp_panel = build_snmp_layout(
         assets,
@@ -827,6 +882,7 @@ def build_data_layout(
         )
         set_snmp_mode(is_snmp)
         snmp_panel.visible = is_snmp
+        snmp_refresh_button.visible = is_snmp
 
     right_panel_selector.param.watch(select_right_panel, "value")
     right_panel = pn.Column(
